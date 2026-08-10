@@ -104,3 +104,4 @@ ADR-0001-short-kebab-case-title.md
 | [ADR-0003](ADR-0003-web-first-client-delivery.md) | Superseded：Web-first 但 Desktop 仍在 V1 的旧决策 |
 | [ADR-0004](ADR-0004-desktop-moved-to-v1-1.md) | Windows Desktop 整体移出 V1 并进入 V1.1 |
 | [ADR-0005](ADR-0005-assistant-ui-for-agent-conversation-surfaces.md) | assistant-ui 作为 Agent 对话交互组件基线，通过项目治理层接入 Nexus REST/SSE |
+| [ADR-0006](ADR-0006-agentscope-2-0-1-bom-and-embedded-harness.md) | **Proposed**：采用 AgentScope 2.0.1 官方 BOM 并内嵌 Harness/Core（DEV-0001 结论草案） |
