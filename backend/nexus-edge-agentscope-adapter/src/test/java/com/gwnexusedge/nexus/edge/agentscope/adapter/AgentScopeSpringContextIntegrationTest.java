@@ -4,6 +4,7 @@ import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionReference
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionRequest;
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.SecretResolver;
 import java.util.List;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,8 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>验证：Spring Boot 4.1.0 上下文能装配 AgentScope Harness/Core 的 Adapter Bean，
  * 并通过受控 OpenAI 兼容测试端点完成一次真实异步执行（00 §3、A-002）。
  *
- * <p>P0-3：测试上下文显式提供 {@link SecretResolver} Bean（test-only）；
- * 测试值仅存在于 test source。
+ * <p>P0-4：本测试自包含且顺序无关——{@code @BeforeAll} 重置 ModelRegistry 与 OTel
+ * 全局状态，独立运行时（{@code -Dtest=AgentScopeSpringContextIntegrationTest}）
+ * 不依赖任何其它测试的先执行状态。P0-3：测试上下文显式提供 {@link SecretResolver} Bean。
  */
 @SpringBootTest(classes = AgentScopeSpringContextIntegrationTest.AgentScopeTestContext.class)
 class AgentScopeSpringContextIntegrationTest {
@@ -60,6 +62,13 @@ class AgentScopeSpringContextIntegrationTest {
 
     @Autowired
     private AgentscopeAgentExecutionAdapter adapter;
+
+    @BeforeAll
+    static void resetGlobalState() {
+        // P0-4：重置全局静态状态，保证独立运行/任意顺序均一致。
+        io.agentscope.core.model.ModelRegistry.reset();
+        TestOtel.init();
+    }
 
     @Test
     @DisplayName("Spring Boot 4.1.0 上下文内嵌 AgentScope 并异步完成真实执行")

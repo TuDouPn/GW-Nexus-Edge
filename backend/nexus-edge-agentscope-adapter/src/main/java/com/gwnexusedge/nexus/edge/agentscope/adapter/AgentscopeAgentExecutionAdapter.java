@@ -18,6 +18,7 @@ import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.opentelemetry.instrumentation.reactor.v3_1.ContextPropagationOperator;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -26,7 +27,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
-import java.util.concurrent.SubmissionPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
@@ -41,8 +41,8 @@ import reactor.core.Disposable;
  * 业务 Agent 不得获得 Host execute / 未授权文件系统 / subagent / workspace skill 能力。
  *
  * <p>单一执行源（P0-2）：{@code streamEvents()} 是唯一执行源。{@code startExecution}
- * 启动一次 {@code streamEvents} 订阅，把事件写入执行前建立的 {@link SubmissionPublisher}；
- * {@code streamExecutionEvents} 返回同一 Publisher，绝不发起第二次执行。
+ * 启动一次 {@code streamEvents} 订阅，把事件写入执行前建立的 {@link EventSink}（replay 语义，
+ * 延迟订阅不丢事件）；{@code streamExecutionEvents} 返回同一 EventSink，绝不发起第二次执行。
  *
  * <p>Secret 边界（P0-3）：Adapter 只持有 Secret Reference，经 {@link SecretResolver}
  * 在运行期解析临时值；不保存、不记录明文。main 生产装配不提供伪实现。
@@ -92,25 +92,26 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         String taskAttemptId = TaskAttemptId.newUuidV7();
         String agentId = agent.getAgentId();
 
-        // P1-4：真实执行链路采集 OTel Trace ID（span 在创建时即确定 traceId）。
-        // AgentScope core 通过 GlobalOpenTelemetry + OtelTracingMiddleware 传播 span；
-        // span 在订阅的执行线程中保持 current 直至完成/失败/取消（见下方 doOnComplete/doOnError）。
-        // 未配置 SDK 时返回 no-op（traceId 为全零），由测试与生产门禁拒绝。
-        TraceSupport.TraceHandle trace = TraceSupport.startAndCaptureTraceId();
+        // P0-1：为本次执行创建独立 OTel span（并发隔离，不 makeCurrent 于调用线程），
+        // traceId 在 span 创建时即确定；span 上下文经 Reactor Context 传播到异步执行链。
+        TraceSupport.TraceHandle trace = TraceSupport.start();
         String traceId = trace.traceId();
 
-        // P1-8：SubmissionPublisher 必须在执行开始前建立，避免订阅前事件丢失。
-        SubmissionPublisher<AgentEventEnvelope> publisher = new SubmissionPublisher<>();
+        // P0-2：事件源必须在执行开始前建立（replay 语义，延迟订阅不丢事件）。
+        var eventSink = EventSink.<AgentEventEnvelope>replay();
 
         ExecutionHandle handle = new ExecutionHandle(
-                request, agent, taskAttemptId, agentId, publisher);
+                request, agent, taskAttemptId, agentId, eventSink);
         // handles 以 taskAttemptId 为键；业务 Task 标识 → taskAttemptId 映射供按 Task 查询。
         handlesByAttemptId.put(taskAttemptId, handle);
         attemptIdByTaskId.put(request.taskId(), taskAttemptId);
 
+        // P1-9：RuntimeContext 注入 workspaceId/tenantId（可观测与审计上下文）。
         RuntimeContext ctx = RuntimeContext.builder()
                 .sessionId(request.sessionId())
                 .userId(request.userId())
+                .put("workspaceId", request.workspaceId())
+                .put("tenantId", request.tenantId())
                 .build();
         List<Msg> messages = request.messages().stream()
                 .map(UserMessage::new)
@@ -119,9 +120,14 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
 
         // 单一执行源（P0-2）：唯一一次 streamEvents 订阅，同时完成事件推送/状态/结果/失败/取消。
         handle.disposable = agent.streamEvents(messages, ctx)
+                // P0-1：把本次执行的 OTel span 注入 Reactor Context，由 AgentScope
+                // ContextPropagationOperator 在异步链中传播（并发 Task 隔离）。
+                .contextWrite(reactorCtx ->
+                        ContextPropagationOperator.storeOpenTelemetryContext(
+                                reactorCtx, io.opentelemetry.context.Context.current().with(trace.span())))
                 .doOnNext(event -> {
                     AgentEventEnvelope envelope = mapEvent(handle, event);
-                    handle.publisher.submit(envelope);
+                    handle.eventSink.emit(envelope);
                     // 终态由真实事件驱动（P1-5）：检测中断恢复消息。
                     if (event instanceof AgentResultEvent result) {
                         Msg msg = result.getResult();
@@ -135,9 +141,13 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                     }
                 })
                 .doOnComplete(() -> {
-                    handle.publisher.close();
-                    if (handle.status == AgentExecutionReference.ExecutionStatus.STARTED
-                            || handle.status == AgentExecutionReference.ExecutionStatus.CANCEL_REQUESTED) {
+                    handle.eventSink.complete();
+                    // P1-元数据误判修正：流结束兜底时区分取消与正常完成。
+                    // CANCEL_REQUESTED 未收到中断异常/恢复消息即结束 → CANCELLED（非 COMPLETED）。
+                    if (handle.status == AgentExecutionReference.ExecutionStatus.CANCEL_REQUESTED) {
+                        transitionTerminal(handle,
+                                AgentExecutionReference.ExecutionStatus.CANCELLED);
+                    } else if (handle.status == AgentExecutionReference.ExecutionStatus.STARTED) {
                         // 正常流结束且未收到结果事件：视为完成（流内无结果事件时兜底）。
                         transitionTerminal(handle,
                                 AgentExecutionReference.ExecutionStatus.COMPLETED);
@@ -157,7 +167,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                         log.warn("Task {} 执行失败: {}", request.taskId(), error.toString());
                     }
                     TraceSupport.end(trace);
-                    handle.publisher.closeExceptionally(error);
+                    handle.eventSink.completeExceptionally(error);
                 })
                 .subscribe();
 
@@ -214,23 +224,27 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         AgentExecutionRequest resumedRequest = new AgentExecutionRequest(
                 reference.taskId(), reference.userId(), reference.sessionId(),
                 "", "", List.of("继续之前的会话"));
-        SubmissionPublisher<AgentEventEnvelope> publisher = new SubmissionPublisher<>();
+        EventSink<AgentEventEnvelope> eventSink = EventSink.replay();
         ExecutionHandle handle = new ExecutionHandle(
-                resumedRequest, resumed, newTaskAttemptId, newAgentId, publisher);
+                resumedRequest, resumed, newTaskAttemptId, newAgentId, eventSink);
         handlesByAttemptId.put(newTaskAttemptId, handle);
         attemptIdByTaskId.put(resumedRequest.taskId(), newTaskAttemptId);
 
+        // P1-9：resume 同样注入 workspaceId/tenantId 上下文。
         RuntimeContext ctx = RuntimeContext.builder()
                 .sessionId(reference.sessionId())
                 .userId(reference.userId())
                 .build();
         List<Msg> messages = List.of(new UserMessage("继续之前的会话"));
-        // P1-4：resume 同样采集真实 OTel Trace ID。
-        TraceSupport.TraceHandle trace = TraceSupport.startAndCaptureTraceId();
+        // P0-1：resume 同样为独立 span，经 Reactor Context 传播。
+        TraceSupport.TraceHandle trace = TraceSupport.start();
         handle.disposable = resumed.streamEvents(messages, ctx)
+                .contextWrite(reactorCtx ->
+                        ContextPropagationOperator.storeOpenTelemetryContext(
+                                reactorCtx, io.opentelemetry.context.Context.current().with(trace.span())))
                 .doOnNext(event -> {
                     AgentEventEnvelope envelope = mapEvent(handle, event);
-                    handle.publisher.submit(envelope);
+                    handle.eventSink.emit(envelope);
                     if (event instanceof AgentResultEvent result) {
                         Msg msg = result.getResult();
                         if (msg != null && msg.getGenerateReason() == GenerateReason.INTERRUPTED) {
@@ -243,9 +257,12 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                     }
                 })
                 .doOnComplete(() -> {
-                    handle.publisher.close();
-                    if (handle.status == AgentExecutionReference.ExecutionStatus.STARTED
-                            || handle.status == AgentExecutionReference.ExecutionStatus.CANCEL_REQUESTED) {
+                    handle.eventSink.complete();
+                    // P1-元数据误判修正：与 startExecution 一致——取消请求未收到中断确认即结束 → CANCELLED。
+                    if (handle.status == AgentExecutionReference.ExecutionStatus.CANCEL_REQUESTED) {
+                        transitionTerminal(handle,
+                                AgentExecutionReference.ExecutionStatus.CANCELLED);
+                    } else if (handle.status == AgentExecutionReference.ExecutionStatus.STARTED) {
                         transitionTerminal(handle,
                                 AgentExecutionReference.ExecutionStatus.COMPLETED);
                     }
@@ -261,7 +278,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                                 AgentExecutionReference.ExecutionStatus.FAILED);
                     }
                     TraceSupport.end(trace);
-                    handle.publisher.closeExceptionally(error);
+                    handle.eventSink.completeExceptionally(error);
                 })
                 .subscribe();
 
@@ -278,12 +295,12 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         if (handle == null) {
             throw new IllegalStateException("Task " + reference.taskId() + " 不存在可流式读取的执行");
         }
-        // P0-2/P1-8：返回执行前已建立的 Publisher，绝不发起第二次执行。
-        return handle.publisher;
+        // P0-2：返回执行前已建立的 replay 事件源，绝不发起第二次执行。
+        return handle.eventSink;
     }
 
     /**
-     * 构建安全 Agent：显式禁用全部危险能力（P0-1）。
+     * 构建安全 Agent：显式禁用全部危险能力（P0-1/P1-Allowlist）。
      */
     private HarnessAgent buildSecureAgent() {
         return HarnessAgent.builder()
@@ -301,6 +318,9 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                 .disableDynamicSubagents()
                 .disableDynamicSkills()
                 .disableDefaultWorkspaceSkills()
+                // P1-Allowlist：业务 Agent 不授予默认 memory/session 工具，
+                // 工具面仅为显式白名单（toolkit 中注册的工具）。
+                .disableMemoryTools()
                 .build();
     }
 
@@ -316,6 +336,23 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
             return Set.of();
         }
         return handle.agent.getToolkit().getToolNames();
+    }
+
+    /**
+     * 暴露执行注入的 Workspace/Tenant 上下文（P1-9 可观测性，测试证据用）。
+     *
+     * @param taskId 业务 Task 标识
+     * @return 已注入 RuntimeContext 的 workspaceId/tenantId
+     */
+    public java.util.Map<String, String> executionContext(String taskId) {
+        String attemptId = attemptIdByTaskId.get(taskId);
+        ExecutionHandle handle = attemptId == null ? null : handlesByAttemptId.get(attemptId);
+        if (handle == null) {
+            return java.util.Map.of();
+        }
+        return java.util.Map.of(
+                "workspaceId", handle.request.workspaceId(),
+                "tenantId", handle.request.tenantId());
     }
 
     /**
@@ -386,7 +423,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
             if (handle.disposable != null) {
                 handle.disposable.dispose();
             }
-            handle.publisher.close();
+            handle.eventSink.complete();
             handle.agent.close();
         });
         handlesByAttemptId.clear();
@@ -399,19 +436,19 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         final HarnessAgent agent;
         final String taskAttemptId;
         final String agentId;
-        final SubmissionPublisher<AgentEventEnvelope> publisher;
+        final EventSink<AgentEventEnvelope> eventSink;
         volatile AgentExecutionReference.ExecutionStatus status;
         volatile Throwable failure;
         volatile Disposable disposable;
 
         ExecutionHandle(AgentExecutionRequest request, HarnessAgent agent,
                         String taskAttemptId, String agentId,
-                        SubmissionPublisher<AgentEventEnvelope> publisher) {
+                        EventSink<AgentEventEnvelope> eventSink) {
             this.request = request;
             this.agent = agent;
             this.taskAttemptId = taskAttemptId;
             this.agentId = agentId;
-            this.publisher = publisher;
+            this.eventSink = eventSink;
             this.status = AgentExecutionReference.ExecutionStatus.STARTED;
         }
     }

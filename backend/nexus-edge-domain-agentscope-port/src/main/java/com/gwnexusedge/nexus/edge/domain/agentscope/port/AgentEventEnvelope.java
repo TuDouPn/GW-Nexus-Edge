@@ -7,14 +7,17 @@ package com.gwnexusedge.nexus.edge.domain.agentscope.port;
  * 它刻意只暴露业务安全的字段，确保隐藏思维链、Secret 与未授权内容永远不会越过此边界。
  * SSE 线上格式定义于 06_API_AND_EVENT_CONTRACT.md；本 Port 只承载业务含义。
  *
- * <p>eventId 为官方事件携带的稳定标识，供客户端 {@code Last-Event-ID} 断线续传（06 §5）；
- * 同一 Task/Execution 的全部事件必须携带相同 taskId/executionId。
+ * <p>标识语义（P1-Execution-Id）：executionId 承载 AgentScope Agent 实例标识
+ * （官方 getAgentId，构建时 UUID），用于把事件关联到所属 Agent 执行；执行级
+ * 更细粒度标识（replyId）可从 {@code summary} 或后续持久化层的事件游标获得。
+ * eventId 为官方事件携带的稳定标识，供标识与后续 {@code Last-Event-ID} 续传
+ * （06 §5）；同一 Task/Agent 执行的全部事件必须携带相同 taskId/executionId。
  *
  * @param taskId      事件所属的业务 Task 标识
  * @param type        业务事件类型（例如 STARTED、TOOL_STARTED、TOOL_COMPLETED、COMPLETED、FAILED）
- * @param executionId AgentScope 执行标识（真实来源，对领域层不透明）
+ * @param executionId AgentScope Agent 实例标识（真实来源，对领域层不透明）
  * @param summary     安全、脱敏后的摘要（绝不携带原始 Prompt / Secret / 思维链）
- * @param eventId     官方事件标识（Last-Event-ID 断线续传）
+ * @param eventId     官方事件标识（供 Last-Event-ID 续传，P1-8）
  */
 public record AgentEventEnvelope(
         String taskId,

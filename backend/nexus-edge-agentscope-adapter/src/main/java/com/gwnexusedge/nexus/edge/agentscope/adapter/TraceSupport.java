@@ -3,17 +3,24 @@ package com.gwnexusedge.nexus.edge.agentscope.adapter;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
-import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.instrumentation.reactor.v3_1.ContextPropagationOperator;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * AgentScope Adapter 的 OpenTelemetry Trace 支持（P1-4）。
+ * AgentScope Adapter 的 OpenTelemetry Trace 支持（P0-1 修复）。
  *
- * <p>在真实执行链路中创建 span 并采集 Trace ID（32 位 hex）。AgentScope core 通过
- * {@code GlobalOpenTelemetry} 与 {@code OtelTracingMiddleware} 传播 span 上下文；
- * 本类在启动执行前创建 span（makeCurrent），使执行期间 AgentScope 的 span 成为子 span。
+ * <p>并发隔离：每个 Task 创建独立的 OTel span 与 Trace ID；span 通过
+ * {@link ContextPropagationOperator#storeOpenTelemetryContext} 写入 Reactor Context，
+ * 由 AgentScope core 已注册的 ContextPropagationOperator 在异步执行链中传播
+ * （不依赖调用线程的 makeCurrent，避免上下文泄漏与并发污染）。
  *
- * <p>边界：未配置 OTel SDK 时（no-op provider）traceId 为全零（32 个 '0'），
- * 由测试与生产门禁拒绝；真实环境必须配置 OTel SDK 使 GlobalOpenTelemetry 产生真实 span。
+ * <p>span 生命周期：由调用方在 {@code doFinally} 中 {@link #end(TraceHandle)} 结束
+ * （覆盖完成/错误/取消），保证每个 Task 的 span 独立结束。
+ *
+ * <p>边界：未配置 OTel SDK 时（no-op provider）traceId 为全零，由测试与生产门禁拒绝。
  */
 public final class TraceSupport {
 
@@ -21,31 +28,50 @@ public final class TraceSupport {
         // 工具类，禁止实例化
     }
 
+    private static final Map<String, Span> ACTIVE_SPANS = new ConcurrentHashMap<>();
+
     /**
-     * 创建真实 span 并返回其 Trace ID（32 位 hex）。
+     * 为一次执行创建独立 span 并返回 Trace 句柄。
      *
-     * <p>span 在返回后保持 current 直至调用者 {@link #endCurrentSpan(Scope, Span)} 结束；
-     * 期间执行的 AgentScope 调用应被纳入同一 trace。
+     * <p>span 创建后即确定 traceId；span 上下文存入 Reactor Context 供异步链传播。
      *
-     * @return 采集结果（span 与 scope 需配对关闭）
+     * @return Trace 句柄（span + traceId + 已注入 OTel Context 的 Reactor Context）
      */
-    public static TraceHandle startAndCaptureTraceId() {
+    public static TraceHandle start() {
         Span span = GlobalOpenTelemetry.getTracer("com.gwnexusedge.nexus.edge.agentscope")
                 .spanBuilder("nexus-edge.agent.execution")
                 .startSpan();
-        Scope scope = span.makeCurrent();
         SpanContext sc = span.getSpanContext();
-        return new TraceHandle(span, scope, sc.getTraceId());
+        String traceId = sc.getTraceId();
+
+        // 把 OTel Context 写入 Reactor Context（不 makeCurrent 于调用线程，避免泄漏）。
+        reactor.util.context.Context reactorCtx =
+                ContextPropagationOperator.storeOpenTelemetryContext(
+                        reactor.util.context.Context.empty(),
+                        Context.current().with(span));
+        return new TraceHandle(span, traceId, reactorCtx);
     }
 
-    /** 结束 span 与 scope（配对关闭）。 */
+    /** 结束 span（幂等；重复调用安全）。 */
     public static void end(TraceHandle handle) {
         if (handle != null) {
-            handle.scope.close();
             handle.span.end();
+            ACTIVE_SPANS.remove(handle.spanId());
         }
     }
 
-    /** 一个正在进行的 trace 采集句柄。 */
-    public record TraceHandle(Span span, Scope scope, String traceId) {}
+    /** 是否真实 Trace ID（32 位 hex，非全零、非 unassigned）。 */
+    public static boolean isRealTraceId(String traceId) {
+        return traceId != null
+                && traceId.matches("[0-9a-f]{32}")
+                && !traceId.matches("0{32}")
+                && !"unassigned".equals(traceId);
+    }
+
+    /** 一次执行的 Trace 句柄。 */
+    public record TraceHandle(Span span, String traceId, reactor.util.context.Context reactorContext) {
+        public String spanId() {
+            return span.getSpanContext().getSpanId();
+        }
+    }
 }

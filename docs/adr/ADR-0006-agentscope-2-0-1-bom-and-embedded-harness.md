@@ -1,7 +1,7 @@
-# ADR-0006 — 采用 AgentScope 2.0.1 官方 BOM 并内嵌 Harness/Core（第二轮评审修订版）
+# ADR-0006 — 采用 AgentScope 2.0.1 官方 BOM 并内嵌 Harness/Core（第三轮评审修订版）
 
 > 状态：**Proposed（草案，待产品架构负责人批准）**
-> 日期：2026-08-10（首次）；2026-08-10（第一轮修订）；2026-08-10（第二轮修订）
+> 日期：2026-08-10（首次）；2026-08-10（三轮 CHANGES_REQUESTED 修订）
 > 决策人：（待产品架构负责人）
 > 关联决策/Issue：DEV-0001、G-01、G-03、OQ-007
 > 关联 ADR：ADR-0001、ADR-0002、ADR-0004
@@ -34,6 +34,15 @@ DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）�
    AgentScope 2.0.1 无独立 Execution ID 概念。
 10. **事件契约（P1-8）**：Publisher 执行前建立；事件携带 eventId；**Last-Event-ID 续传
     归后续持久化业务事件层**，本 ADR 不承诺续传能力。
+11. **Trace 异步上下文隔离（第三轮 P0-1）**：每 Task 独立 OTel span，经
+    `contextWrite` + `ContextPropagationOperator` 传播到异步链；不 makeCurrent 于调用线程；
+    并发 Task traceId 隔离。
+12. **事件 replay（第三轮 P0-2）**：Adapter 使用带 replay 语义的 `EventSink`（执行前建立，
+    延迟订阅收到完整事件序列）。
+13. **Secret 解析可验证（第三轮 P0-3）**：`SecretResolver` 记录 reference、按 reference
+    区分值；解析值经请求头可验证。
+14. **执行级标识（第三轮 P1）**：`AgentEventEnvelope.executionId` 承载 Agent 实例标识；
+    事件携带执行级 replyId；终态判定区分取消与完成（无元数据误判）。
 
 ## 长期适配性
 
@@ -59,10 +68,13 @@ DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）�
 
 ## 验证
 
-- G-01：通过（`./mvnw clean verify` 17/17）。
-- G-03：**PARTIAL**（能力清单已形成；真实 Provider/Redis/生产 OTel 注入待补）。
+- G-01：通过（`./mvnw clean verify` 23/23）。
+- G-03：**PARTIAL**（能力清单已验证大部分；真实 Provider/Redis/生产 OTel 注入待补）。
 - OQ-007：**PARTIAL**（JsonFile 恢复已验证；Redis/Checkpoint 待评审）。
-- P0-1~P1-8 全部验证（证据见 `docs/dev-0001/COMPATIBILITY_REPORT.md` §2/§4）。
+- 第三轮 P0×4 + P1×6 全部验证（证据见 `docs/dev-0001/COMPATIBILITY_REPORT.md` §2/§4）。
+- 已知局限（如实记录）：`disableShellTool/disableFilesystemTools` 移除工具但底层
+  filesystem 仍是本地 overlay；生产业务 Agent 需显式 `filesystem(LocalFilesystemSpec)`
+  限定工作区（Phase 3），Coding Sandbox 完整隔离由 22 文档承担。
 
 ## 未解决问题
 
@@ -70,3 +82,4 @@ DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）�
 - RedisAgentStateStore 生产采用（OQ-007 评审）。
 - OTel traceId 生产链路注入（12 §6）。
 - Last-Event-ID 续传（后续持久化业务事件层）。
+- 宿主 filesystem overlay 的生产隔离方案（Phase 3）。

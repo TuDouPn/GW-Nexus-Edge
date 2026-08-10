@@ -26,6 +26,8 @@ public final class CompatEndpoint implements AutoCloseable {
     private final HttpServer server;
     private final AtomicReference<String> lastRequestBody = new AtomicReference<>();
     private final java.util.List<String> allRequestBodies = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final AtomicReference<String> lastAuthorization = new AtomicReference<>();
+    private final java.util.List<String> allAuthorizations = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final AtomicBoolean failWith500 = new AtomicBoolean(false);
     private final AtomicBoolean structuredReply = new AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicLong artificialDelayMillis = new java.util.concurrent.atomic.AtomicLong(0);
@@ -75,10 +77,22 @@ public final class CompatEndpoint implements AutoCloseable {
         return java.util.List.copyOf(allRequestBodies);
     }
 
-    /** 重置记录的请求体，便于用例间隔离。 */
+    /** 最近一次请求的 Authorization 头（P0-3 Secret 解析验证）。 */
+    public String lastAuthorization() {
+        return lastAuthorization.get();
+    }
+
+    /** 全部请求的 Authorization 头。 */
+    public java.util.List<String> allAuthorizations() {
+        return java.util.List.copyOf(allAuthorizations);
+    }
+
+    /** 重置记录的请求体与 Authorization，便于用例间隔离。 */
     public void resetRequests() {
         allRequestBodies.clear();
         lastRequestBody.set(null);
+        allAuthorizations.clear();
+        lastAuthorization.set(null);
     }
 
     /** 重置工具调用轮次计数（每个用例独立验证首轮 tool_call）。 */
@@ -103,6 +117,10 @@ public final class CompatEndpoint implements AutoCloseable {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         lastRequestBody.set(body);
         allRequestBodies.add(body);
+        // 记录 Authorization 头（P0-3：验证 Secret 解析值真实进入请求）。
+        String auth = exchange.getRequestHeaders().getFirst("Authorization");
+        lastAuthorization.set(auth);
+        allAuthorizations.add(auth);
 
         if (failWith500.get()) {
             respond(exchange, 500, "{\"error\":{\"message\":\"injected server error\",\"type\":\"server_error\"}}");
