@@ -2,10 +2,6 @@ package com.gwnexusedge.nexus.edge.agentscope.adapter;
 
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionReference;
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionRequest;
-import io.agentscope.core.agent.RuntimeContext;
-import io.agentscope.core.message.Msg;
-import io.agentscope.core.message.UserMessage;
-import io.agentscope.harness.agent.HarnessAgent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,103 +15,88 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DEV-0001 取消语义测试（官方 AgentScope interrupt）。
+ * DEV-0001 取消语义测试（评审项 2：必须验证在途 Adapter 执行确实被中断）。
  *
- * <p>官方 interrupt 是会话级优雅中断：通过 {@code delegate.interrupt(RuntimeContext)}
- * 按 (userId, sessionId) 精准定位在途调用并触发中断检查点。本测试验证：
+ * <p>通过 Adapter 的 {@code cancelExecution} 触发官方 interrupt，并验证：
  * <ol>
- *   <li>官方 interrupt API 对运行中的调用可调用、不抛意外异常；</li>
- *   <li>被中断的调用在限定时间内终止（不无限挂起）；</li>
- *   <li>Adapter {@code cancelExecution} 正确映射到官方 interrupt 语义。</li>
+ *   <li>执行在运行中（STARTED 或后续状态）时调用取消；</li>
+ *   <li>取消后 Adapter 状态推进为 CANCELLED（而非"不抛异常"冒充成功）；</li>
+ *   <li>被中断的执行不产生伪成功结果。</li>
  * </ol>
  *
- * <p>注意：官方中断在检查点（模型调用之间的 reasoning loop 迭代）触发，
- * 是否在首轮模型响应前生效取决于执行节奏；本测试不依赖 INTERRUPTED 原因的精确时序，
- * 只验证"可中断、有界终止、映射正确"。Task 状态机（CANCEL_REQUESTED → CANCELLED）
- * 属于 Nexus Edge 业务层，不在 DEV-0001 范围。
+ * <p>Task 状态机（CANCEL_REQUESTED → CANCELLED）属于 Nexus Edge 业务层，
+ * 本测试验证 Adapter 层的取消生命周期语义。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AgentScopeCancelTest {
 
     private CompatEndpoint endpoint;
-    private HarnessAgent agent;
+    private AgentscopeAgentExecutionAdapter adapter;
     private Path workspace;
 
     @BeforeAll
     void setUp() throws IOException {
+        TestOtel.init();
         endpoint = new CompatEndpoint(0);
         workspace = Files.createTempDirectory("nexus-edge-cancel");
-        ModelAssembler.registerOpenAiCompatibleModel(new AgentscopeAdapterConfig(
+        AgentscopeAdapterConfig config = new AgentscopeAdapterConfig(
                 "openai:test-model", endpoint.baseUrl(), "test-key",
-                workspace.toString(), "你是取消验证助手。"));
-        agent = HarnessAgent.builder()
-                .name("cancel-compat-agent")
-                .sysPrompt("你是取消验证助手。")
-                .model("openai:test-model")
-                .workspace(workspace)
-                .build();
+                workspace.toString(), "你是取消验证助手。");
+        adapter = new AgentscopeAgentExecutionAdapter(config);
     }
 
     @AfterAll
     void tearDown() {
-        agent.close();
+        adapter.close();
         endpoint.close();
     }
 
     @Test
-    @DisplayName("官方 interrupt(RuntimeContext) 可被调用且运行中的调用有界终止")
-    void interruptStopsRunningExecution() throws Exception {
-        // 注入 3 秒延迟，使调用有充分时间处于运行中。
+    @DisplayName("cancelExecution 中断在途 Adapter 执行并推进到 CANCELLED")
+    void cancelStopsInFlightAdapterExecution() throws Exception {
+        // 3 秒延迟使执行长时间处于运行中。
         endpoint.setArtificialDelayMillis(3000);
-        RuntimeContext ctx = RuntimeContext.builder()
-                .sessionId("cancel-session-1")
-                .userId("cancel-user-1")
-                .build();
 
-        CountDownLatch completed = new CountDownLatch(1);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        AtomicReference<Msg> result = new AtomicReference<>();
+        AgentExecutionReference ref = adapter.startExecution(new AgentExecutionRequest(
+                "task-cancel-1", "user-cancel-1", "session-cancel-1",
+                "workspace-1", "tenant-1", List.of("请生成一份很长的报告")));
+        assertNotNull(ref);
 
-        agent.call(List.of(new UserMessage("请生成一份很长的报告")), ctx)
-                .doFinally(signal -> completed.countDown())
-                .subscribe(result::set, failure::set);
+        // 执行已启动（异步），状态应为 STARTED。
+        assertEquals(AgentExecutionReference.ExecutionStatus.STARTED,
+                adapter.statusOf("task-cancel-1"), "执行应处于运行中");
 
-        // 等待调用开始（端点延迟中），随后按官方 RuntimeContext 语义请求取消。
+        // 在途时请求取消。
+        adapter.cancelExecution(ref);
+
+        // 评审项 2：状态必须推进到 CANCELLED，验证中断确实发生。
+        assertEquals(AgentExecutionReference.ExecutionStatus.CANCELLED,
+                adapter.statusOf("task-cancel-1"),
+                "cancelExecution 后 Adapter 状态必须为 CANCELLED（不是不抛异常冒充成功）");
+
+        // 取消后不应推进到 COMPLETED（被中断的执行不产生伪成功）。
+        endpoint.setArtificialDelayMillis(0);
         Thread.sleep(500);
-        try {
-            agent.getDelegate().interrupt(ctx);
-        } finally {
-            endpoint.setArtificialDelayMillis(0);
-        }
-
-        boolean finished = completed.await(10, TimeUnit.SECONDS);
-        assertTrue(finished, "interrupt 后调用应在限定时间内终止（不无限挂起）");
-
-        // 官方语义下中断返回恢复消息或中断异常；两者都说明执行已被打断而非正常完成。
-        // 仅记录观测结果，不在此处断言具体原因（时序相关）。
-        assertTrue(result.get() != null || failure.get() != null,
-                "interrupt 后应产生结果或中断异常，两者必有其一");
+        assertTrue(adapter.statusOf("task-cancel-1") != AgentExecutionReference.ExecutionStatus.COMPLETED,
+                "被取消的执行不应以 COMPLETED 结束");
     }
 
     @Test
-    @DisplayName("Adapter cancelExecution 正确映射到官方 interrupt 语义且不抛未捕获异常")
-    void adapterCancelExecutionMapsToInterrupt() throws Exception {
-        AgentscopeAdapterConfig config = new AgentscopeAdapterConfig(
-                "openai:test-model", endpoint.baseUrl(), "test-key",
-                workspace.toString(), "你是取消验证助手。");
-        try (AgentscopeAgentExecutionAdapter adapter = new AgentscopeAgentExecutionAdapter(config)) {
-            endpoint.setArtificialDelayMillis(0);
-            // 先创建一次执行（无延迟，快速完成），获得执行引用。
-            AgentExecutionReference ref = adapter.startExecution(new AgentExecutionRequest(
-                    "task-cancel-1", "user-cancel-1", "session-cancel-1",
-                    "workspace-1", "tenant-1", List.of("你好")));
+    @DisplayName("cancelExecution 对已登记执行不抛意外异常")
+    void cancelExecutionDoesNotThrowUnexpectedly() throws Exception {
+        endpoint.setArtificialDelayMillis(0);
+        AgentExecutionReference ref = adapter.startExecution(new AgentExecutionRequest(
+                "task-cancel-2", "user-cancel-1", "session-cancel-2",
+                "workspace-1", "tenant-1", List.of("你好")));
 
-            // cancelExecution 对已登记的执行调用官方 interrupt，不应抛未捕获异常。
-            adapter.cancelExecution(ref);
-        }
+        // 等待执行推进，再取消。
+        Thread.sleep(1000);
+        adapter.cancelExecution(ref);
+        assertTrue(adapter.statusOf("task-cancel-2") != null, "取消后状态应可查询");
     }
 }

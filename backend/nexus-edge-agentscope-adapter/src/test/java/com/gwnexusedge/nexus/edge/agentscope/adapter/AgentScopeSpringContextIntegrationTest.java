@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -17,17 +18,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * DEV-0001 Spring Boot 4.1.0 内嵌 AgentScope Harness/Core 集成测试（G-01 核心）。
  *
  * <p>验证：Spring Boot 4.1.0 上下文能装配 AgentScope Harness/Core 的 Adapter Bean，
- * 并通过受控 OpenAI 兼容测试端点完成一次真实执行——即"Spring Boot 内嵌
- * AgentScope"（00 §3、A-002：不部署独立 AgentScope Service 或 Runtime Control Plane）。
+ * 并通过受控 OpenAI 兼容测试端点完成一次真实异步执行——即"Spring Boot 内嵌
+ * AgentScope"（00 §3、A-002）。
  *
- * <p>测试上下文自包含地声明端点、配置与 Adapter Bean，将 base-url 指向
- * 实际启动的受控测试端点；端点 Test Double 只证明运行时与协议集成，
- * 不构成任何模型 Provider 的生产认证。
+ * <p>测试上下文自包含声明端点、配置与 Adapter Bean；配置为必填属性（fail-fast），
+ * 测试值仅存在于 test source（评审项 6）。
  */
 @SpringBootTest(classes = AgentScopeSpringContextIntegrationTest.AgentScopeTestContext.class)
 class AgentScopeSpringContextIntegrationTest {
 
-    /** 自包含 Spring 配置：端点、配置与 Adapter 全部显式声明。 */
+    /** 自包含 Spring 配置：端点、配置与 Adapter 全部显式声明（测试专用值）。 */
     @Configuration
     public static class AgentScopeTestContext {
         @Bean(destroyMethod = "close")
@@ -56,8 +56,8 @@ class AgentScopeSpringContextIntegrationTest {
     private AgentscopeAgentExecutionAdapter adapter;
 
     @Test
-    @DisplayName("Spring Boot 4.1.0 上下文内嵌 AgentScope 并完成真实执行")
-    void springContextRunsEmbeddedAgentScope() {
+    @DisplayName("Spring Boot 4.1.0 上下文内嵌 AgentScope 并异步完成真实执行")
+    void springContextRunsEmbeddedAgentScope() throws Exception {
         assertNotNull(adapter, "Spring 上下文应装配 AgentScope Adapter Bean");
 
         AgentExecutionReference reference = adapter.startExecution(new AgentExecutionRequest(
@@ -66,6 +66,18 @@ class AgentScopeSpringContextIntegrationTest {
 
         assertNotNull(reference);
         assertNotNull(reference.executionId());
+        assertFalse(reference.executionId().isBlank(), "executionId 不得为空");
         assertTrue(reference.taskId().startsWith("task-spring-"));
+
+        // 等待异步执行完成。
+        long deadline = System.currentTimeMillis() + 8000;
+        while (System.currentTimeMillis() < deadline
+                && adapter.statusOf("task-spring-1")
+                        != AgentExecutionReference.ExecutionStatus.COMPLETED) {
+            Thread.sleep(200);
+        }
+        assertTrue(adapter.statusOf("task-spring-1")
+                        == AgentExecutionReference.ExecutionStatus.COMPLETED,
+                "Spring 上下文内嵌的 AgentScope 执行应真实完成");
     }
 }

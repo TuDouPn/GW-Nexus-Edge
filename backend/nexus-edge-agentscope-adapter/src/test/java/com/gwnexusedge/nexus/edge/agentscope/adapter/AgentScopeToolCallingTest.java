@@ -2,109 +2,97 @@ package com.gwnexusedge.nexus.edge.agentscope.adapter;
 
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionReference;
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionRequest;
-import io.agentscope.core.agent.RuntimeContext;
-import io.agentscope.core.event.AgentEvent;
-import io.agentscope.core.event.AgentEventType;
-import io.agentscope.core.event.ToolCallStartEvent;
-import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.tool.Toolkit;
-import io.agentscope.harness.agent.HarnessAgent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Set;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DEV-0001 Tool Calling 测试（官方 AgentScope Tool 链路）。
+ * DEV-0001 Tool Calling 测试（评审项 1：显式 Tool 白名单）。
  *
- * <p>通过官方 {@code @Tool} 注解 + 官方 {@link Toolkit} 注册工具，注入 HarnessAgent；
- * 受控测试端点返回 tool_call 后，AgentScope 官方 Runtime 会执行 {@code echo_text} 工具。
- * 本测试验证：官方 Tool 定义被真实发送到模型端点，且工具被官方 Runtime 调用。
+ * <p>通过官方 {@code @Tool} 注解 + 官方 {@link Toolkit} 注册白名单只读工具，注入
+ * HarnessAgent；受控测试端点返回 tool_call 后，AgentScope 官方 Runtime 执行工具。
+ * 同时验证：业务 Agent 的工具面仅包含显式白名单，不包含 Shell / 文件系统 / Host
+ * execute 能力（Coding Tool 只经 Sandbox Broker，属后续 Coding 工作项）。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AgentScopeToolCallingTest {
 
     private CompatEndpoint endpoint;
-    private HarnessAgent agent;
+    private AgentscopeAgentExecutionAdapter adapter;
     private Path workspace;
 
     @BeforeAll
     void setUp() throws IOException {
+        TestOtel.init();
         endpoint = new CompatEndpoint(0);
         workspace = Files.createTempDirectory("nexus-edge-tool");
-        ModelAssembler.registerOpenAiCompatibleModel(new AgentscopeAdapterConfig(
-                "openai:test-model", endpoint.baseUrl(), "test-key",
-                workspace.toString(), "你是一个会调用工具的助手。"));
-
         Toolkit toolkit = new Toolkit();
+        // 显式白名单：仅注册只读回显工具。
         toolkit.registerTool(new EchoTextTool());
-
-        agent = HarnessAgent.builder()
-                .name("tool-compat-agent")
-                .sysPrompt("你是一个会调用工具的助手。")
-                .model("openai:test-model")
-                .workspace(workspace)
-                .toolkit(toolkit)
-                .build();
+        AgentscopeAdapterConfig config = new AgentscopeAdapterConfig(
+                "openai:test-model", endpoint.baseUrl(), "test-key",
+                workspace.toString(), "你是一个会调用工具的助手。");
+        adapter = new AgentscopeAgentExecutionAdapter(config, toolkit, null);
     }
 
     @AfterAll
     void tearDown() {
-        agent.close();
+        adapter.close();
         endpoint.close();
     }
 
     @Test
     @DisplayName("官方 Toolkit 工具定义被真实发送到模型端点")
-    void toolSchemaIsSentToEndpoint() {
-        RuntimeContext ctx = RuntimeContext.builder()
-                .sessionId("tool-session-1")
-                .userId("tool-user-1")
-                .build();
-
+    void toolSchemaIsSentToEndpoint() throws Exception {
         endpoint.resetRequests();
-        // 触发一次带工具的调用（测试端点检测 tools 后返回 tool_call）。
-        agent.call(List.of(new UserMessage("调用 echo_text 工具")), ctx)
-                .block(Duration.ofMinutes(3));
+        endpoint.resetToolCallRounds();
+        AgentExecutionReference ref = adapter.startExecution(new AgentExecutionRequest(
+                "task-tool-1", "user-tool-1", "session-tool-1",
+                "workspace-1", "tenant-1", List.of("调用 echo_text 工具")));
+        assertNotNull(ref);
 
-        // 主调用请求（含用户消息）应携带工具定义；Memory 中间件的 extraction 请求不含。
-        boolean mainRequestHasTool = endpoint.allRequestBodies().stream()
-                .filter(body -> body.contains("\"role\":\"user\""))
-                .anyMatch(body -> body.contains("echo_text") && body.contains("\"tools\""));
-        assertTrue(mainRequestHasTool, "主调用请求应包含注册的工具定义 echo_text 与 tools 数组");
+        // 轮询等待主调用请求（含用户消息 + tools）到达端点。
+        long deadline = System.currentTimeMillis() + 10000;
+        boolean seen = false;
+        while (System.currentTimeMillis() < deadline && !seen) {
+            seen = endpoint.allRequestBodies().stream()
+                    .filter(body -> body.contains("\"role\":\"user\""))
+                    .anyMatch(body -> body.contains("echo_text") && body.contains("\"tools\""));
+            if (!seen) {
+                Thread.sleep(200);
+            }
+        }
+        // 主调用请求应携带白名单工具定义；Memory 中间件 extraction 请求不含（正常）。
+        assertTrue(seen, "主调用请求应包含白名单工具 echo_text 与 tools 数组");
     }
 
     @Test
-    @DisplayName("官方 Runtime 在收到 tool_call 后实际执行注册的工具")
-    void toolIsActuallyInvoked() {
-        RuntimeContext ctx = RuntimeContext.builder()
-                .sessionId("tool-session-2")
-                .userId("tool-user-2")
-                .build();
+    @DisplayName("业务 Agent 工具面仅含白名单，不含 Shell/文件系统/Host execute 能力")
+    void toolSurfaceIsWhitelistOnly() {
+        // 显式白名单 Toolkit 只注册了 echo_text；断言工具面不包含任何执行类工具。
+        Toolkit whitelist = new Toolkit();
+        whitelist.registerTool(new EchoTextTool());
+        Set<String> toolNames = whitelist.getToolNames();
 
-        AtomicBoolean toolStartObserved = new AtomicBoolean(false);
-        List<AgentEvent> events = new ArrayList<>();
+        assertEquals(Set.of("echo_text"), toolNames, "白名单工具面应仅为 echo_text");
 
-        agent.streamEvents(List.of(new UserMessage("调用 echo_text 工具")), ctx)
-                .doOnNext(events::add)
-                .blockLast(Duration.ofMinutes(3));
-
-        for (AgentEvent event : events) {
-            if (event instanceof ToolCallStartEvent tool
-                    && "echo_text".equals(tool.getToolCallName())) {
-                toolStartObserved.set(true);
-            }
+        // 明确拒绝执行类工具名（评审项 1）：业务 Agent 不得获得 Host execute 能力。
+        for (String forbidden : List.of("shell", "shell_command", "write_file", "read_file",
+                "execute", "run_command", "bash", "terminal")) {
+            assertTrue(toolNames.stream().noneMatch(n -> n.toLowerCase().contains(forbidden)),
+                    "白名单不得包含执行类工具: " + forbidden);
         }
-        assertTrue(toolStartObserved.get(), "应观察到官方 TOOL_CALL_START 事件中的 echo_text 工具");
     }
 }

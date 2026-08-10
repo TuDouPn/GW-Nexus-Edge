@@ -33,6 +33,9 @@
         <!-- 由 00_DECISIONS.md §3 冻结；已于 2026-08-10 在 Maven Central 核验 -->
         <agentscope.version>2.0.1</agentscope.version>
         <!-- AgentScope core/harness/扩展版本由官方 BOM 统一管理 -->
+
+        <!-- 统一 Testcontainers 版本（Spring Boot BOM 未覆盖 junit-jupiter 时使用） -->
+        <testcontainers.version>1.20.6</testcontainers.version>
     </properties>
 
     <modules>
@@ -60,6 +63,18 @@
                 <artifactId>nexus-edge-domain-agentscope-port</artifactId>
                 <version>${project.version}</version>
             </dependency>
+
+            <!-- 统一管理 Testcontainers 版本 -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers</artifactId>
+                <version>${testcontainers.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${testcontainers.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -83,5 +98,37 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!--
+              Enforcer：Java 21 / Maven 3.9+ fail-fast。
+              核心版本由 00_DECISIONS.md 冻结，禁止静默降级或在不兼容环境构建。
+              显式声明于 plugins（pluginManagement 只管理配置，不会自动执行）。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>enforce-toolchain</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[21,22)</version>
+                                    <message>必须使用 Java 21（LTS）构建，核心版本由 00_DECISIONS.md 冻结</message>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.9,)</version>
+                                    <message>必须使用 Maven 3.9+</message>
+                                </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

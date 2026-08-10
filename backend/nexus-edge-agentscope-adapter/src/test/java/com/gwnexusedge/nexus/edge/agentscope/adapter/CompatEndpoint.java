@@ -27,7 +27,9 @@ public final class CompatEndpoint implements AutoCloseable {
     private final AtomicReference<String> lastRequestBody = new AtomicReference<>();
     private final java.util.List<String> allRequestBodies = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final AtomicBoolean failWith500 = new AtomicBoolean(false);
+    private final AtomicBoolean structuredReply = new AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicLong artificialDelayMillis = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicInteger toolCallRounds = new java.util.concurrent.atomic.AtomicInteger(0);
 
     /**
      * 启动测试端点。
@@ -54,6 +56,11 @@ public final class CompatEndpoint implements AutoCloseable {
         failWith500.set(fail);
     }
 
+    /** 切换为结构化输出响应（返回合法 JSON 结构化结果）。 */
+    public void setStructuredReply(boolean structured) {
+        structuredReply.set(structured);
+    }
+
     /** 设置每个请求的人工延迟（毫秒），用于验证取消运行中任务。 */
     public void setArtificialDelayMillis(long millis) {
         artificialDelayMillis.set(millis);
@@ -72,6 +79,11 @@ public final class CompatEndpoint implements AutoCloseable {
     public void resetRequests() {
         allRequestBodies.clear();
         lastRequestBody.set(null);
+    }
+
+    /** 重置工具调用轮次计数（每个用例独立验证首轮 tool_call）。 */
+    public void resetToolCallRounds() {
+        toolCallRounds.set(0);
     }
 
     private void handleHealth(HttpExchange exchange) throws IOException {
@@ -99,16 +111,65 @@ public final class CompatEndpoint implements AutoCloseable {
 
         boolean stream = body.contains("\"stream\":true");
         boolean hasTools = body.contains("\"tools\"");
-        if (stream && hasTools) {
-            // 主调用为流式且携带工具定义：以 SSE 返回一次 tool_call，验证 Tool Calling 链路。
+        if (structuredReply.get()) {
+            // 结构化输出：返回合法 JSON（native response_format 或 generate_response 工具结果）。
+            if (stream) {
+                streamStructuredResponse(exchange);
+            } else {
+                respond(exchange, 200, structuredResponseBody());
+            }
+        } else if (stream && hasTools && toolCallRounds.incrementAndGet() == 1) {
+            // 主调用为流式且携带工具定义：首轮以 SSE 返回一次 tool_call 验证 Tool Calling 链路。
+            // 后续轮次（会话已含 tool result）返回普通文本，避免无限 Tool 循环。
             streamToolCallResponse(exchange);
         } else if (stream) {
             streamResponse(exchange);
-        } else if (hasTools) {
-            // 非流式且携带工具定义时，返回一次工具调用。
+        } else if (hasTools && toolCallRounds.incrementAndGet() == 1) {
+            // 非流式且携带工具定义：首轮返回一次工具调用。
             respond(exchange, 200, toolCallResponseBody());
         } else {
             respond(exchange, 200, nonStreamResponseBody());
+        }
+    }
+
+    private String structuredResponseBody() {
+        // 与 AnalysisResult(conclusion, score, recommendations) 匹配的合法 JSON。
+        return """
+                {
+                  "id": "chatcmpl-test-so",
+                  "object": "chat.completion",
+                  "created": 1700000000,
+                  "model": "test-model",
+                  "choices": [{
+                    "index": 0,
+                    "message": {
+                      "role": "assistant",
+                      "content": "{"conclusion":"经营状况总体稳健","score":0.85,"recommendations":["优化现金流","控制成本"]}"
+                    },
+                    "finish_reason": "stop"
+                  }],
+                  "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+                }
+                """;
+    }
+
+    private void streamStructuredResponse(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+        exchange.sendResponseHeaders(200, 0);
+        try (OutputStream out = exchange.getResponseBody()) {
+            String[] chunks = {
+                "data: {\"id\":\"chatcmpl-test-so\",\"object\":\"chat.completion.chunk\","
+                    + "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":"
+                    + "\"{\\\"conclusion\\\":\\\"经营状况总体稳健\\\",\\\"score\\\":0.85,"
+                    + "\\\"recommendations\\\":[\\\"优化现金流\\\",\\\"控制成本\\\"]}\"},\"finish_reason\":null}]}\n\n",
+                "data: {\"id\":\"chatcmpl-test-so\",\"object\":\"chat.completion.chunk\","
+                    + "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+                "data: [DONE]\n\n"
+            };
+            for (String chunk : chunks) {
+                out.write(chunk.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
         }
     }
 

@@ -19,11 +19,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DEV-0001 错误传播测试（官方 Provider 错误 → 结构化异常传播）。
+ * DEV-0001 错误传播测试（评审项 7：修复恒真断言）。
  *
- * <p>验证：当模型端点返回 500 时，AgentScope 官方 OpenAI 扩展把错误传播为
- * 结构化异常（而非伪装成空结果的成功）。这是"错误不允许以空结果伪装成功"
- * 原则在官方运行时层的真实体现（09 §7、13 §6）。
+ * <p>验证：当模型端点返回 500 时，AgentScope 官方 OpenAI 扩展把错误传播为结构化异常
+ * （而非伪装成空结果的成功）。官方行为：重试 2 次后抛出 {@code RetryExhaustedException}。
+ * 断言直接基于捕获的异常本身，不使用从未赋值的占位变量。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AgentScopeErrorPropagationTest {
@@ -34,11 +34,11 @@ class AgentScopeErrorPropagationTest {
 
     @BeforeAll
     void setUp() throws IOException {
+        TestOtel.init();
         endpoint = new CompatEndpoint(0);
         workspace = Files.createTempDirectory("nexus-edge-error");
-        ModelAssembler.registerOpenAiCompatibleModel(new AgentscopeAdapterConfig(
-                "openai:test-model", endpoint.baseUrl(), "test-key",
-                workspace.toString(), "你是错误验证助手。"));
+        ModelAssembler.registerOpenAiCompatibleModel(
+                "openai:test-model", endpoint.baseUrl(), "test-key");
         agent = HarnessAgent.builder()
                 .name("error-compat-agent")
                 .sysPrompt("你是错误验证助手。")
@@ -63,8 +63,6 @@ class AgentScopeErrorPropagationTest {
                 .build();
 
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        AtomicReference<Object> result = new AtomicReference<>();
-
         try {
             agent.call(List.of(new UserMessage("触发服务端错误")), ctx)
                     .block(Duration.ofMinutes(3));
@@ -74,10 +72,17 @@ class AgentScopeErrorPropagationTest {
             endpoint.setFailWith500(false);
         }
 
-        assertNotNull(failure.get(), "端点 500 应传播为异常，而不是返回成功结果");
-        assertTrue(result.get() == null, "不应返回伪造的成功结果");
-        // 记录异常类型，作为错误传播证据。
-        System.out.println("错误传播证据: " + failure.get().getClass().getName()
-                + " -> " + failure.get().getMessage());
+        // 评审项 7：直接断言捕获的异常（而非从未赋值的 result 产生恒真断言）。
+        Throwable error = failure.get();
+        assertNotNull(error, "端点 500 应传播为异常，而不是返回成功结果");
+
+        // 官方内置重试：RetryExhaustedException 为预期传播结果（G-03 能力证据）。
+        String errorName = error.getClass().getSimpleName();
+        String message = error.getMessage() == null ? "" : error.getMessage();
+        assertTrue(errorName.contains("RetryExhausted") || message.contains("Retries exhausted")
+                        || errorName.contains("OpenAI") || errorName.contains("Http"),
+                "错误应以结构化异常传播，实际类型: " + error.getClass().getName()
+                        + "，消息: " + message);
+        System.out.println("错误传播证据: " + error.getClass().getName() + " -> " + message);
     }
 }
