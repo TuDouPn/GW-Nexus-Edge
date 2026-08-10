@@ -1,0 +1,61 @@
+# --- macOS ---
+.DS_Store
+.DS_Store?
+.AppleDouble
+._*
+.Spotlight-V100
+.Trashes
+*.swp
+*~
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+*.code-workspace
+
+# --- Maven ---
+target/
+*.class
+*.jar
+*.war
+*.ear
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+
+# --- Node ---
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.pnpm-store/
+
+# --- AgentScope runtime workspace (local artifact, never commit) ---
+.agentscope/
+.agentscope/workspace/
+
+# --- Secret & local environment ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+**/application-local.yml
+**/application-secret.yml
+
+# --- Test / runtime artifacts ---
+*.log
+logs/
+test-output/
+coverage/
+.nyc_output/
+
+# --- OS generated ---
+.DS_Store
