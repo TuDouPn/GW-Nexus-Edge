@@ -1,11 +1,10 @@
-# DEV-0001 — AgentScope 2.0.1 核心兼容性验证报告（评审修订版）
+# DEV-0001 — AgentScope 2.0.1 核心兼容性验证报告（第二轮评审修订版）
 
-> 状态：PARTIALLY_VERIFIED（模型 Provider 生产认证未验证）
-> 日期：2026-08-10（首次）；2026-08-10（CHANGES_REQUESTED 修订）
+> 状态：PARTIALLY_VERIFIED（G-01 通过；G-03/OQ-007 为 PARTIAL；模型 Provider 生产认证未验证）
+> 日期：2026-08-10（首次）；2026-08-10（CHANGES_REQUESTED 第一轮修订）；2026-08-10（第二轮修订）
 > 分支：`agent/DEV-0001-agentscope-compatibility`
-> 关联门禁：G-01（核心依赖兼容 PoC）、G-03（AgentScope 能力盘点）
-> 关联 Open Question：OQ-007（AgentScope Persistence/Recovery 边界）
-> 评审结论：CHANGES_REQUESTED → 已按 9 项修订全部修正
+> 关联门禁：G-01（核心依赖兼容 PoC，**通过**）、G-03（AgentScope 能力盘点，**PARTIAL**）
+> 关联 Open Question：OQ-007（Persistence/Recovery 边界，**PARTIAL**）
 
 ---
 
@@ -13,37 +12,33 @@
 
 | 验证项 | 结论 | 证据 |
 |---|---|---|
-| Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 共同构建 | **通过** | Maven Wrapper `clean verify` BUILD SUCCESS，16 测试全绿 |
-| Enforcer fail-fast（Java 21 / Maven 3.9） | **通过** | JDK 8 下构建被拒绝；JDK 21 下通过 |
-| Spring Boot 4.1.0 内嵌 AgentScope Harness/Core | **通过** | `AgentScopeSpringContextIntegrationTest` |
-| 最小真实 Agent 执行（异步生命周期） | **通过** | `AgentScopeMinimalExecutionTest`：长任务完成前返回真实引用 |
-| 官方 Model Provider（OpenAI-compatible）/ 测试端点 | **通过（协议层）** | 真实 HTTP 请求到达受控端点 |
-| Streaming Event（Flow.Publisher 契约） | **通过** | `AgentScopeStreamingEventTest`：事件非空、同源、携带续传 id |
-| Tool Calling（显式白名单） | **通过** | `AgentScopeToolCallingTest`：仅白名单工具，禁 meta tool |
-| Structured Output（对象成功解析） | **通过** | `AgentScopeStructuredOutputTest`：断言 STRUCTURED_OUTPUT 元数据 |
-| Cancel（官方 interrupt，验证在途中断） | **通过** | `AgentScopeCancelTest`：状态推进 CANCELLED，非"不抛异常" |
-| Error Propagation | **通过** | `AgentScopeErrorPropagationTest`：500 → RetryExhaustedException |
-| Persistence/Recovery（真实 resume） | **通过** | `AgentScopeRecoveryCapabilityTest`：跨实例会话恢复，真实 Execution ID |
-| Task / Execution / Trace 关联（真实 ID） | **通过** | `AgentScopeTraceCorrelationTest`：拒绝空值/"unassigned" |
-| DeepSeek / 企业私有模型生产认证 | **未验证（BLOCKED）** | 需要真实凭据与安全提供的测试凭证 |
+| Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 共同构建 | **G-01 通过** | `./mvnw clean verify` BUILD SUCCESS，17 测试全绿 |
+| Enforcer fail-fast（Java 21 / Maven 3.9） | **通过** | JDK 8 拒绝、JDK 21 通过 |
+| Harness 安全边界（P0-1） | **通过** | 构建后 `getToolkit().getToolNames()` 无危险工具（证据见 §4.1） |
+| 单一执行源（P0-2） | **通过** | streamExecutionEvents 订阅前后请求数不变（证据见 §4.2） |
+| Secret Provider（P0-3） | **通过（契约层）** | SecretResolver 端口；main 无伪实现、无默认 Prompt |
+| Adapter 真实 Trace（P1-4） | **通过** | startExecution 返回真实 OTel traceId |
+| Cancel 真实中断（P1-5） | **通过** | 终态由真实中断事件确认；互斥终态 |
+| Recovery 上下文内容（P1-6） | **通过** | 跨实例恢复请求含第一次标记；ModelRegistry 重置 |
+| 标识模型（P1-7） | **通过** | taskId / taskAttemptId(UUIDv7) / agentId / traceId 四标识独立 |
+| 事件契约（P1-8） | **PARTIAL** | 事件携带 eventId；Last-Event-ID 续传属后续持久化层 |
+| G-03 能力盘点 | **PARTIAL** | 能力清单已形成；真实 Provider 未验证 |
+| OQ-007 Recovery 边界 | **PARTIAL** | JsonFile 持久化/恢复已验证；Redis/Checkpoint 待评审 |
+| DeepSeek / 企业私有模型生产认证 | **未验证（BLOCKED）** | 需要真实凭据与安全测试凭证 |
 
-**G-01 判定：通过**（核心三版本组合可共同构建、启动、运行）。
-**G-03 判定：能力清单已形成**（见 §4）。
-**OQ-007 判定：证据已产生**（见 §5），Redis 恢复测试待能力矩阵评审后决定是否启用。
+## 2. 第二轮评审修订落实情况（P0×3 + P1×6）
 
-## 2. 评审修订落实情况（9 项全数修正）
-
-| 评审项 | 修正内容 | 验证 |
+| 评审项 | 修正内容 | 验证证据 |
 |---|---|---|
-| 1. Tool 白名单/文件系统边界 | 显式白名单 Toolkit + `enableMetaTool(false)`；业务 Agent 无 Shell/File/Host execute 工具 | `AgentScopeToolCallingTest.toolSurfaceIsWhitelistOnly` |
-| 2. 执行生命周期 | 异步启动立即返回真实引用；记录真实 userId/sessionId；cancel 验证在途中断（状态 CANCELLED） | `AgentScopeMinimalExecutionTest`、`AgentScopeCancelTest` |
-| 3. resume 真实实现 | 删除伪 ID；用官方 State Store 同 (userId, sessionId) 重建 Agent 继续会话；无 Store 时 fail-fast | `AgentScopeRecoveryCapabilityTest` |
-| 4. 事件契约 | Port 返回 `Flow.Publisher<AgentEventEnvelope>`；订阅原执行真实事件；事件非空/同源/携带续传 id | `AgentScopeStreamingEventTest` |
-| 5. Execution/Trace ID 真实 | executionId=官方 `getAgentId()`（真实 UUID）；traceId=OTel 真实 span；拒绝空值/"unassigned" | `AgentScopeTraceCorrelationTest`、`TestOtel` |
-| 6. 生产配置 fail-fast | 删除 main 默认值；apiKey 改 Secret Reference 语义；必填属性缺失即启动失败；测试值仅存 test | `AgentscopeAdapterConfig`、`AgentscopeAdapterConfiguration` |
-| 7. 测试修正 | Structured 断言对象解析；Recovery 跨实例；Cancel 验证在途；Trace 拒绝空值；Event 非空；Error 修复恒真 | 16/16 全绿 |
-| 8. 构建修正 | Maven Wrapper；Enforcer（Java21/Maven3.9）；Testcontainers 版本统一管理 | `./mvnw`、`mvn validate` 双向验证 |
-| 9. 文档同步 | 本报告、ADR-0006、Handoff 更新，写入真实 Commit SHA | 见 §9 |
+| **P0-1 Harness 安全边界** | 构建时 `disableFilesystemTools() + disableShellTool() + disableSubagents() + disableDynamicSubagents() + disableDynamicSkills() + disableDefaultWorkspaceSkills()` + `enableMetaTool(false)`；**构建后**断言 `getToolkit().getToolNames()` | 工具面 `[echo_text, session_search, session_list, memory_save, memory_search, session_history, wait_async_results, memory_get]`——无 read_file/write_file/edit_file/execute；`filesystem` 不再为 ShellAwareOverlay（disableShellTool 生效） |
+| **P0-2 单一执行源** | `streamEvents()` 为唯一执行源；startExecution 一次订阅同时完成事件/状态/结果/失败/取消；streamExecutionEvents 返回执行前建立的 Publisher，绝不发起第二次执行 | 订阅前后请求数均为 3（`AgentScopeToolCallingTest`） |
+| **P0-3 真 Secret Provider** | 新增 `SecretResolver` 端口（07 §7）；apiKeyReference 经其解析临时值；main 无伪实现（生产装配依赖必填 Bean）；删除 main 默认"测试助手" Prompt | `AgentscopeAdapterConfiguration` 必填注入；`TestSecretResolver` 仅存 test |
+| **P1-4 Adapter 真实 Trace** | `startExecution` 内创建 OTel span 并采集 traceId 注入引用 | `AgentScopeMinimalExecutionTest`/`TraceCorrelationTest` 断言真实 OTel traceId |
+| **P1-5 Cancel 真实中断** | cancelExecution 只置 CANCEL_REQUESTED + interrupt；终态 CANCELLED 由真实中断事件（INTERRUPTED 恢复消息/中断异常）确认；COMPLETED/FAILED/CANCELLED 互斥 | `AgentScopeCancelTest` 3 用例（含删除 interrupt 后正常完成的对照） |
+| **P1-6 Recovery 内容级** | 恢复请求必须包含第一次保存的上下文标记；`ModelRegistry.reset()` 后重注册（不依赖静态残留）；等待 resumed 完成 | `AgentScopeRecoveryCapabilityTest`（CONTEXT_MARKER 内容级断言） |
+| **P1-7 标识模型** | `AgentExecutionReference` 四字段：taskId / taskAttemptId(UUIDv7) / agentId / traceId；**禁止称 agentId 为"官方 Execution ID"** | `TraceCorrelationTest` 语义断言 |
+| **P1-8 事件契约** | SubmissionPublisher 执行前建立（避免订阅前丢事件）；事件携带 eventId；**Last-Event-ID 续传明确归后续持久化业务事件层** | `StreamingEventTest`；Port Javadoc 明确边界 |
+| **P1-9 文档** | 本报告不写"9 项全部修正"；删除与日志相反的 Tool/JSONObject 结论；G-03/OQ-007 改 PARTIAL；Handoff 统一 17/17；git diff --check 无输出 | 本文件 + `git diff --check` |
 
 ## 3. 版本证据（不依赖 GitHub main 分支文档）
 
@@ -51,107 +46,107 @@
 
 | Artifact | 2.0.1 存在性 | 证据 |
 |---|---|---|
-| `io.agentscope:agentscope-bom:2.0.1` | ✅ | Maven Central HTTP 200，POM 检查 |
-| `io.agentscope:agentscope-core:2.0.1` | ✅ | POM + Sources JAR |
-| `io.agentscope:agentscope-harness:2.0.1` | ✅ | POM + Sources JAR |
-| `io.agentscope:agentscope-extensions-model-openai:2.0.1` | ✅ | POM + Sources JAR |
-| `io.agentscope:agentscope-extensions-redis:2.0.1` | ✅ | POM + Sources JAR（jedis/redisson/lettuce） |
+| `io.agentscope:agentscope-bom:2.0.1` | ✅ | Maven Central HTTP 200 |
+| `agentscope-core/harness:2.0.1` | ✅ | POM + Sources JAR |
+| `agentscope-extensions-model-openai:2.0.1` | ✅ | POM + Sources JAR |
+| `agentscope-extensions-redis:2.0.1` | ✅ | POM + Sources JAR |
 | `agentscope-extensions-session-redis/mysql:2.0.1` | ❌ **不存在** | 仅 1.x 与 2.0.0-RC1 |
-| `agentscope-spring-boot-starter:2.0.1` | ✅ 存在 | 编译依赖 Spring Boot **4.0.1**（optional），与 4.1.0 兼容性未经官方保证 |
+| `agentscope-spring-boot-starter:2.0.1` | ✅ 存在 | 编译依赖 Spring Boot 4.0.1（optional） |
 
-**BOM 采用决策**：**采用** `agentscope-bom:2.0.1` 作为全部 AgentScope 依赖版本唯一来源。
-**starter 采用决策**：**不采用** `agentscope-spring-boot-starter:2.0.1`（当前阶段），手工 Bean 装配已验证可行（G-02 复审）。
+**BOM 采用**：`agentscope-bom:2.0.1`。**starter 不采用**（当前阶段）。
 
-**依赖冲突分析（评审项 8）**：
-- `org.json:json:20251224`（compile）：唯一来源 `io.modelcontextprotocol.sdk:mcp-json:0.17.0`（AgentScope 聚合），无重复。
-- `com.vaadin.external.google:android-json`（test）：来源 `jsonassert`（Spring Test），包名与 org.json 不同，无冲突。
-- **结论：无重复 JSONObject 冲突；Maven 未报告冲突警告。** 两库包名空间独立，保留现状并在本报告记录来源。
+**依赖分析（修正）**：`org.json:json:20251224` 唯一来源 `mcp-json:0.17.0`；`android-json`（test）来源 jsonassert，包名独立。**本轮实际验证：无重复 JSONObject 冲突警告**（不夸大结论，仅陈述事实）。
 
-## 4. G-03 AgentScope 2.0.1 能力清单（基于 Sources JAR 盘点）
+## 4. 关键运行证据（第二轮）
 
-### 4.1 Agent API
-- `HarnessAgent`：`call`/`stream`/`streamEvents`/`interrupt`/`getDelegate`/`getAgentId`/`close`
-- `ReActAgent.Builder`：`name`/`sysPrompt`/`model(String|Model)`/`toolkit`/`workspace`/`stateStore`/`maxIters`/`enableMetaTool`
-- **解析时机证据**：`model(String)` 在 builder 调用时立即通过 `ModelRegistry.resolve` 解析。
-- **标识证据**：`getAgentId()` 返回构建时 `UUID.randomUUID()` 真实标识（可作为 Execution/Agent 标识）。
+### 4.1 P0-1 构建后工具面（真实日志）
 
-### 4.2 事件模型（`io.agentscope.core.event`）
-- `AgentEvent`：`getType`/`getId`/`getCreatedAt`/`getSource`/`getMetadata`，含 `METADATA_TASK_ID`
-- `AgentEventType`：`AGENT_START`/`AGENT_END`/`AGENT_RESULT`/`MODEL_CALL_*`/`TEXT_BLOCK_*`/`THINKING_BLOCK_*`/`TOOL_CALL_*`/`TOOL_RESULT_*`/`EXCEED_MAX_ITERS`/`REQUEST_STOP`/`CUSTOM`
+```
+=== 构建后工具面（getToolkit().getToolNames()）: [echo_text, session_search, session_list, memory_save, memory_search, session_history, wait_async_results, memory_get] ===
+```
 
-### 4.3 Runtime Context
-- `RuntimeContext.builder().sessionId().userId().build()`；**线程安全证据**：单实例不保证并发安全 → Adapter 每 Task 独立 HarnessAgent。
+- ✅ 无 `read_file`/`write_file`/`edit_file`/`execute`/`shell`
+- ✅ 无 `ShellAwareOverlay`（disableShellTool + disableFilesystemTools 生效）
+- 剩余为官方 memory/session 工具（`session_*`/`memory_*`/`wait_async_results`），非危险能力
+- 测试断言：工具面包含上述任一危险名即失败
 
-### 4.4 Tool
-- `@Tool`/`@ToolParam` + `Toolkit.registerTool(Object)`；`ToolBase.Builder`；ungrouped 工具始终可见；`enableMetaTool(false)` 禁用动态工具面。
+### 4.2 P0-2 单一执行源（真实日志）
 
-### 4.5 Model
-- `ModelRegistry.register/resolve/registerFactory`；`OpenAIChatModel.Builder`（apiKey/modelName/baseUrl/stream/nativeStructuredOutput）；默认端点 `/v1/chat/completions`；**默认重试**：500 → `RetryExhaustedException`（2 次）。
+```
+=== 单执行源证据: 完成时请求总数=3 ===
+=== 单执行源证据: 订阅后请求总数=3 ===
+```
 
-### 4.6 State / Persistence（OQ-007 输入）
-- `AgentStateStore`：`save/exists/listSessionIds/get/delete`；官方实现 InMemory/JsonFile/Redis（需注入 client）。
-- **HarnessAgent 默认 Memory 中间件**：每次调用后执行 memory extraction 请求（实测证据）。
+- ✅ 订阅 `streamExecutionEvents` 前后请求数不变 → 不发起第二次执行
 
-## 5. OQ-007 Recovery 能力矩阵
+### 4.3 P1-5 Cancel（互斥终态）
+
+- `cancelExecution` → CANCEL_REQUESTED → 真实中断事件 → CANCELLED
+- 不调用 cancelExecution → COMPLETED（对照证明取消依赖真实中断）
+- 已终态任务调用 cancelExecution → 拒绝（IllegalStateException）
+
+## 5. G-03 AgentScope 2.0.1 能力清单（PARTIAL，基于 Sources JAR + 运行验证）
+
+| 能力 | 状态 | 说明 |
+|---|---|---|
+| HarnessAgent API（call/stream/streamEvents/interrupt/getToolkit） | ✅ 验证 | 全部真实调用 |
+| Builder disable* 系列 | ✅ 验证 | P0-1 安全边界 |
+| Tool（@Tool/Toolkit） | ✅ 验证 | 白名单 + 默认 memory/session 工具 |
+| ModelRegistry / OpenAIChatModel | ✅ 验证 | OpenAI-compatible 协议链路 |
+| State Store（JsonFile） | ✅ 验证 | 持久化/恢复 + 内容级验证 |
+| State Store（Redis） | ❌ 未验证 | 扩展存在，待评审启用 |
+| 官方 spring-boot-starter | ❌ 未采用 | SB 4.0.1 兼容性未保证 |
+| DeepSeek / 企业私有 Provider | ❌ BLOCKED | 需真实凭证 |
+| OtelTracingMiddleware | ⚠️ PARTIAL | span 采集已验证；生产注入待接入 |
+
+## 6. OQ-007 Recovery 能力矩阵（PARTIAL）
 
 | 维度 | 结论 |
 |---|---|
-| 官方 State Store 类型 | InMemory / JsonFile（本地）/ Redis（扩展）/ 分布式 Store 接口 |
-| Session 持久化 | `AgentStateStore.save(userId, sessionId, ...)`，JsonFile 可跨进程重载（已验证） |
-| resume 语义 | 同 (userId, sessionId) + 同 store 重建 Agent，`getAgentState` 懒加载恢复会话上下文（已验证，跨 Adapter 实例） |
-| cancel 语义 | 会话级优雅中断：`delegate.interrupt(RuntimeContext)`，返回恢复消息（已验证） |
-| Execution 标识 | 官方 `getAgentId()`（UUID）；**AgentScope 无独立 Execution ID 概念** |
-| Trace 标识 | `TracerRegistry` + `OtelTracingMiddleware`（GlobalOpenTelemetry）；无 SDK 时 Noop |
-| 进程重启恢复粒度 | 业务步骤级（03 §6）；Token 级续跑不要求 |
-| Redis 官方职责 | `agentscope-extensions-redis:2.0.1` 存在，需显式注入 client；**session-redis 无 2.0.1** |
-| Nexus vs AgentScope 边界 | Nexus 持久化业务 Task 状态；AgentScope 持久化 Execution/会话状态（A-004） |
+| Session 持久化 | JsonFile 已验证（内容级） |
+| resume 语义 | 同 (userId, sessionId) + 同 store 重建 Agent（已验证，跨实例） |
+| cancel 语义 | 会话级优雅中断（已验证） |
+| Redis Store | 扩展存在，未启用（待评审） |
+| Checkpoint | 官方组件待进一步盘点 |
+| Nexus vs AgentScope 边界 | Nexus 持久化业务 Task/TaskAttempt；AgentScope 持久化会话（A-004） |
 
-**Redis 恢复测试启用建议**：待评审确认 `RedisAgentStateStore` 满足需要后，以 Testcontainers 增加独立测试；当前保持不预设 Redis。
-
-## 6. 模块与 Port 边界（评审后最终确认）
+## 7. 模块与 Port 边界（第二轮最终）
 
 ```text
 nexus-edge-domain-agentscope-port  纯领域 Port（零 io.agentscope 依赖）
-  └─ AgentExecutionPort
-      └─ startExecution / cancelExecution / resumeExecution
-      └─ streamExecutionEvents → Flow.Publisher<AgentEventEnvelope>（JDK 内置，适合 SSE）
-      └─ AgentExecutionRequest / AgentExecutionReference（含 userId/sessionId/attemptNo/status）
-         / AgentEventEnvelope（含 eventId，Last-Event-ID）
+  └─ AgentExecutionPort（start/cancel/resume/stream）
+  └─ AgentExecutionReference（taskId/taskAttemptId/agentId/traceId/attemptNo/status）
+  └─ AgentEventEnvelope（含 eventId）/ AgentExecutionRequest / SecretResolver / TaskAttemptId(UUIDv7)
 
-nexus-edge-agentscope-adapter     Adapter 实现（依赖 Port + 官方 SDK）
-  └─ AgentscopeAgentExecutionAdapter（异步生命周期、Tool 白名单、真实 ID、resume via State Store）
-      └─ AgentscopeAdapterConfig / ModelAssembler / AgentscopeAdapterConfiguration
+nexus-edge-agentscope-adapter     Adapter 实现
+  └─ AgentscopeAgentExecutionAdapter（安全 Agent、单一执行源、SecretResolver、OTel Trace、真实终态）
+  └─ AgentscopeAdapterConfig（fail-fast）/ ModelAssembler / AgentscopeAdapterConfiguration / TraceSupport
 ```
 
-- Port 不依赖任何 `io.agentscope` 类型 ✅
-- Adapter 依赖 Port，领域层不依赖 Adapter ✅
-- Java 包名统一 `com.gwnexusedge.nexus.edge` ✅
-- 生产配置 fail-fast，无 main 默认测试值 ✅
+## 8. 测试证据（17/17 全绿，第二轮修订后）
 
-## 7. 测试证据（16/16 全绿，评审修订后）
+| 测试类 | 用例数 | 结果 |
+|---|---|---|
+| AgentScopeMinimalExecutionTest | 2 | ✅（真实 traceId + 异步引用） |
+| AgentScopeCancelTest | 3 | ✅（真实中断终态 + 互斥 + 对照） |
+| AgentScopeToolCallingTest | 2 | ✅（P0-1 工具面 + P0-2 单执行源） |
+| AgentScopeTraceCorrelationTest | 3 | ✅（四标识语义独立） |
+| AgentScopeStreamingEventTest | 1 | ✅（P0-2/P1-8 事件契约） |
+| AgentScopeStructuredOutputTest | 1 | ✅（对象解析断言） |
+| AgentScopeErrorPropagationTest | 1 | ✅（500 → RetryExhaustedException） |
+| AgentScopeRecoveryCapabilityTest | 3 | ✅（P1-6 内容级恢复） |
+| AgentScopeSpringContextIntegrationTest | 1 | ✅（SB 4.1.0 内嵌） |
+| **合计** | **17** | **0 失败**（`./mvnw clean verify`） |
 
-| 测试类 | 用例数 | 结果 | 关键断言 |
-|---|---|---|---|
-| AgentScopeMinimalExecutionTest | 2 | ✅ | 异步返回真实引用；executionId 为真实 UUID；COMPLETED |
-| AgentScopeStreamingEventTest | 1 | ✅ | 事件非空、同 Task/Execution、eventId 续传 |
-| AgentScopeToolCallingTest | 2 | ✅ | 工具定义真实发送；白名单仅 echo_text，无执行类工具 |
-| AgentScopeStructuredOutputTest | 1 | ✅ | STRUCTURED_OUTPUT 元数据存在且为 Map（解析成功） |
-| AgentScopeCancelTest | 2 | ✅ | 在途执行被中断；状态 CANCELLED 而非不抛异常 |
-| AgentScopeErrorPropagationTest | 1 | ✅ | 500 → 结构化异常（直接断言捕获异常，非恒真） |
-| AgentScopeRecoveryCapabilityTest | 3 | ✅ | 跨实例 resume；真实 Execution ID；无 Store fail-fast |
-| AgentScopeSpringContextIntegrationTest | 1 | ✅ | SB 4.1.0 内嵌 AgentScope 真实执行 |
-| AgentScopeTraceCorrelationTest | 3 | ✅ | 真实 OTel Trace ID；拒绝空值/"unassigned" |
-| **合计** | **16** | **0 失败** | `./mvnw clean verify` |
+## 9. 明确边界与未验证项
 
-## 8. 明确边界与未验证项
+1. **模型 Provider 生产认证：BLOCKED**。测试端点是下游模型 Test Double。
+2. **G-03 PARTIAL**：能力清单已验证大部分；Redis/真实 Provider/生产 OTel 注入待补。
+3. **OQ-007 PARTIAL**：JsonFile 恢复已验证；Redis/Checkpoint 待评审。
+4. **Last-Event-ID 续传**：P1-8 明确归后续持久化业务事件层，DEV-0001 只保证事件携带 eventId。
+5. **GitHub Actions CI（G-06）**：本地 `./mvnw` 全量验证；CI 待建立。
+6. 未实现任何业务模块；未使用 `docs/archive/legacy/`；未创建远程仓库；未修改核心版本；未合并 main；未批准 ADR。
 
-1. **模型 Provider 生产认证：BLOCKED**。测试端点是下游模型 Test Double，只证明运行时与协议集成；DeepSeek/企业私有模型需真实凭据 + 安全测试凭证（独立可选 Smoke Test）。
-2. **GitHub Actions CI（G-06）**：本地 `./mvnw` 全量验证；CI 建立后纳入流水线。
-3. **starter 自动装配**：未采用官方 starter（§3），G-02 时复审。
-4. **Redis 恢复测试**：未启用（§5）。
-5. **OTel traceId 注入到引用**：测试直接验证 OTel 可产生真实 Trace ID；Adapter 生产链路需在 OTel 中间件启用后接入（12 §6 关联）。
-6. 未实现任何业务模块；未使用 `docs/archive/legacy/`；未创建远程仓库、未 Push、未修改核心版本。
+## 10. 提交记录
 
-## 9. 提交记录（真实 Commit SHA）
-
-评审修订后的 Commit SHA 见 `docs/handoffs/active/DEV-0001.md` §6（`git log --oneline` 可核验）。
+第二轮修正 Commit SHA 见 `docs/handoffs/active/DEV-0001.md` §6（`git log --oneline` 可核验）。

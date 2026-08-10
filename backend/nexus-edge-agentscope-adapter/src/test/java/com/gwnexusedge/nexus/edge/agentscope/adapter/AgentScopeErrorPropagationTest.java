@@ -4,7 +4,6 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.harness.agent.HarnessAgent;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -23,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>验证：当模型端点返回 500 时，AgentScope 官方 OpenAI 扩展把错误传播为结构化异常
  * （而非伪装成空结果的成功）。官方行为：重试 2 次后抛出 {@code RetryExhaustedException}。
- * 断言直接基于捕获的异常本身，不使用从未赋值的占位变量。
+ * 断言直接基于捕获的异常本身。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AgentScopeErrorPropagationTest {
@@ -35,10 +34,10 @@ class AgentScopeErrorPropagationTest {
     @BeforeAll
     void setUp() throws IOException {
         TestOtel.init();
-        endpoint = new CompatEndpoint(0);
-        workspace = Files.createTempDirectory("nexus-edge-error");
+        endpoint = AgentScopeCompatTestSupport.newEndpoint();
+        workspace = AgentScopeCompatTestSupport.newWorkspace("nexus-edge-error");
         ModelAssembler.registerOpenAiCompatibleModel(
-                "openai:test-model", endpoint.baseUrl(), "test-key");
+                "openai:test-model", endpoint.baseUrl(), TestSecretResolver.TEST_API_KEY);
         agent = HarnessAgent.builder()
                 .name("error-compat-agent")
                 .sysPrompt("你是错误验证助手。")
@@ -72,11 +71,10 @@ class AgentScopeErrorPropagationTest {
             endpoint.setFailWith500(false);
         }
 
-        // 评审项 7：直接断言捕获的异常（而非从未赋值的 result 产生恒真断言）。
+        // 直接断言捕获的异常（非恒真断言）。
         Throwable error = failure.get();
         assertNotNull(error, "端点 500 应传播为异常，而不是返回成功结果");
 
-        // 官方内置重试：RetryExhaustedException 为预期传播结果（G-03 能力证据）。
         String errorName = error.getClass().getSimpleName();
         String message = error.getMessage() == null ? "" : error.getMessage();
         assertTrue(errorName.contains("RetryExhausted") || message.contains("Retries exhausted")

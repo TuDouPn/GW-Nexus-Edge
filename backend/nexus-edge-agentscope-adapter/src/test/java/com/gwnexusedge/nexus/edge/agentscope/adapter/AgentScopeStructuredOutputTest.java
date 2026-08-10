@@ -1,6 +1,5 @@
 package com.gwnexusedge.nexus.edge.agentscope.adapter;
 
-import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionRequest;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.MessageMetadataKeys;
 import io.agentscope.core.message.Msg;
@@ -8,7 +7,6 @@ import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -23,11 +21,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DEV-0001 Structured Output 测试（评审项 7：必须断言目标对象成功解析）。
+ * DEV-0001 Structured Output 测试（评审项 7）。
  *
  * <p>官方结构化输出把解析结果注入 {@link MessageMetadataKeys#STRUCTURED_OUTPUT} 元数据；
  * 若 JSON 解析失败，官方只记录 warn 且不注入该键。本测试断言：结构化输出元数据存在、
- * 可解析为目标对象、且无解析警告（若官方日志出现解析失败即失败）。
+ * 可解析为目标对象字段，解析失败即测试失败。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AgentScopeStructuredOutputTest {
@@ -42,10 +40,10 @@ class AgentScopeStructuredOutputTest {
     @BeforeAll
     void setUp() throws IOException {
         TestOtel.init();
-        endpoint = new CompatEndpoint(0);
-        workspace = Files.createTempDirectory("nexus-edge-structured");
+        endpoint = AgentScopeCompatTestSupport.newEndpoint();
+        workspace = AgentScopeCompatTestSupport.newWorkspace("nexus-edge-structured");
         ModelAssembler.registerOpenAiCompatibleModel(
-                "openai:test-model", endpoint.baseUrl(), "test-key");
+                "openai:test-model", endpoint.baseUrl(), TestSecretResolver.TEST_API_KEY);
         agent = HarnessAgent.builder()
                 .name("structured-compat-agent")
                 .sysPrompt("你是结构化输出验证助手。")
@@ -79,7 +77,7 @@ class AgentScopeStructuredOutputTest {
 
         assertNotNull(result, "结构化输出调用应返回结果");
 
-        // 评审项 7：断言目标对象成功解析——官方把解析结果注入 STRUCTURED_OUTPUT 元数据。
+        // 断言目标对象成功解析：官方把解析结果注入 STRUCTURED_OUTPUT 元数据。
         Map<String, Object> metadata = result.getMetadata();
         assertNotNull(metadata, "结果应携带元数据");
         Object parsed = metadata.get(MessageMetadataKeys.STRUCTURED_OUTPUT);

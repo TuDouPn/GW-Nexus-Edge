@@ -3,36 +3,42 @@ package com.gwnexusedge.nexus.edge.domain.agentscope.port;
 /**
  * 从 Nexus Edge 领域视角标识一次逻辑上的 Agent 执行（00_DECISIONS.md A-004）。
  *
- * <p>Nexus Edge 拥有业务 Task 生命周期，仅维护与 AgentScope 执行的映射。executionId
- * 必须来自真实执行（AgentScope 官方标识），领域层对其内容不透明，但禁止空值。
- * traceId 来自 OpenTelemetry 上下文，未采集时显式为空（由 Adapter 保证不产生
- * "unassigned" 这类伪造值）。userId/sessionId 为会话级恢复所需（官方 State Store
- * 按 (userId, sessionId) 键控），因此引用携带二者。
+ * <p>标识模型（P1-7 修正）：四个标识各自独立、语义明确——
+ * <ul>
+ *   <li>{@code taskId}：业务 Task 标识（操作员发起，贯穿全部 Attempt）；</li>
+ *   <li>{@code taskAttemptId}：Nexus Edge 业务层生成的 TaskAttempt UUIDv7（业务主键，API 传输）；</li>
+ *   <li>{@code agentId}：AgentScope 官方 Agent 实例标识（构建时 UUID.randomUUID()），
+ *       不是官方 Execution ID——AgentScope 2.0.1 无独立 Execution ID 概念；</li>
+ *   <li>{@code traceId}：OpenTelemetry 真实 Trace ID（32 位 hex），来自执行链路。</li>
+ * </ul>
+ * 映射由 Nexus Edge 持久化（A-004）。禁止把 agentId 称为"官方 Execution ID"。
  *
- * @param taskId      业务 Task 标识（API 传输用 UUIDv7 字符串）
- * @param executionId AgentScope 执行/Agent 标识（真实来源，非合成）
- * @param traceId     OpenTelemetry trace id；未采集时为空字符串
- * @param attemptNo   业务尝试序号（TaskAttempt 语义，从 1 开始）
- * @param status      执行状态（供调用方验证取消/完成/失败）
- * @param userId      执行用户标识（会话恢复）
- * @param sessionId   会话标识（会话恢复）
+ * @param taskId        业务 Task 标识
+ * @param taskAttemptId Nexus TaskAttempt UUIDv7（业务主键）
+ * @param agentId       AgentScope Agent 实例标识（官方 getAgentId）
+ * @param traceId       OpenTelemetry trace id；未采集时为空字符串
+ * @param attemptNo     业务尝试序号（TaskAttempt 语义，从 1 开始）
+ * @param status        执行状态（互斥终态：COMPLETED/FAILED/CANCELLED）
+ * @param userId        执行用户标识（会话恢复）
+ * @param sessionId     会话标识（会话恢复）
  */
 public record AgentExecutionReference(
         String taskId,
-        String executionId,
+        String taskAttemptId,
+        String agentId,
         String traceId,
         int attemptNo,
         ExecutionStatus status,
         String userId,
         String sessionId) {
 
-    /** 执行状态：供调用方验证生命周期，而非仅凭"未抛异常"推断。 */
+    /** 执行状态：互斥终态（P1-5），由真实执行事件驱动，禁止自行设置。 */
     public enum ExecutionStatus {
         /** 已启动，后台推进中。 */
         STARTED,
-        /** 已请求取消，等待确认。 */
+        /** 已请求取消，等待真实中断事件确认。 */
         CANCEL_REQUESTED,
-        /** 已确认取消。 */
+        /** 已确认取消（interrupt 恢复消息/中断异常）。 */
         CANCELLED,
         /** 正常完成。 */
         COMPLETED,
@@ -44,8 +50,11 @@ public record AgentExecutionReference(
         if (taskId == null || taskId.isBlank()) {
             throw new IllegalArgumentException("taskId 不允许为空");
         }
-        if (executionId == null || executionId.isBlank()) {
-            throw new IllegalArgumentException("executionId 不允许为空（禁止合成假 ID）");
+        if (taskAttemptId == null || taskAttemptId.isBlank()) {
+            throw new IllegalArgumentException("taskAttemptId 不允许为空");
+        }
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalArgumentException("agentId 不允许为空");
         }
         if (attemptNo < 1) {
             throw new IllegalArgumentException("attemptNo 必须 >= 1");
@@ -64,28 +73,30 @@ public record AgentExecutionReference(
 
     /** 首尝试构造（attemptNo=1）。 */
     public static AgentExecutionReference firstAttempt(
-            String taskId, String executionId, String traceId,
+            String taskId, String taskAttemptId, String agentId, String traceId,
             ExecutionStatus status, String userId, String sessionId) {
         return new AgentExecutionReference(
-                taskId, executionId, traceId, 1, status, userId, sessionId);
+                taskId, taskAttemptId, agentId, traceId, 1, status, userId, sessionId);
     }
 
-    /** 以新状态重建引用。 */
+    /** 以新状态重建引用（终态只允许由执行事件驱动，见 P1-5）。 */
     public AgentExecutionReference withStatus(ExecutionStatus newStatus) {
         return new AgentExecutionReference(
-                taskId, executionId, traceId, attemptNo, newStatus, userId, sessionId);
+                taskId, taskAttemptId, agentId, traceId, attemptNo, newStatus, userId, sessionId);
     }
 
-    /** 以新尝试序号与执行标识重建引用（TaskAttempt 语义）。 */
-    public AgentExecutionReference nextAttempt(String newExecutionId, ExecutionStatus newStatus) {
+    /** 以新尝试序号、新 Attempt 标识与新 Agent 标识重建引用（TaskAttempt 语义）。 */
+    public AgentExecutionReference nextAttempt(
+            String newTaskAttemptId, String newAgentId, ExecutionStatus newStatus) {
         return new AgentExecutionReference(
-                taskId, newExecutionId, traceId, attemptNo + 1, newStatus, userId, sessionId);
+                taskId, newTaskAttemptId, newAgentId, traceId, attemptNo + 1,
+                newStatus, userId, sessionId);
     }
 
     /** 以真实 traceId 重建引用（从 OTel 上下文采集后调用）。 */
     public AgentExecutionReference withTraceId(String realTraceId) {
         return new AgentExecutionReference(
-                taskId, executionId, realTraceId == null ? "" : realTraceId,
+                taskId, taskAttemptId, agentId, realTraceId == null ? "" : realTraceId,
                 attemptNo, status, userId, sessionId);
     }
 }

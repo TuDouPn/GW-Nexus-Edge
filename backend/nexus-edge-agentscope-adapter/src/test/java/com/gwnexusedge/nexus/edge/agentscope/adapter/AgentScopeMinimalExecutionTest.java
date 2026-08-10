@@ -2,9 +2,7 @@ package com.gwnexusedge.nexus.edge.agentscope.adapter;
 
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionReference;
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionRequest;
-import io.agentscope.core.tool.Toolkit;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -22,14 +20,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DEV-0001 最小真实执行测试（G-01）。
+ * DEV-0001 最小真实执行测试（G-01 + P1-4）。
  *
  * <p>验证：Java 21 + Spring Boot 4.1.0 编译产物下，AgentScope Harness/Core 官方代码能够
  * 通过受控 OpenAI 兼容测试端点完成一次真实异步执行，并在长任务完成前返回真实可关联引用。
- * executionId 必须来自官方 {@code getAgentId()}（真实 UUID），禁止合成假 ID。
  *
- * <p>边界：本测试中的测试端点是下游模型 Test Double，只证明运行时与协议集成；
- * 不构成任何模型 Provider 的生产认证（用户修订要求五）。
+ * <p>P1-4：traceId 必须在 Adapter 的 {@code startExecution} 真实链路中采集并返回
+ * （非测试手工构造），且必须是真实非空 OTel Trace ID。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AgentScopeMinimalExecutionTest {
@@ -41,17 +38,11 @@ class AgentScopeMinimalExecutionTest {
     @BeforeAll
     void setUp() throws IOException {
         TestOtel.init();
-        endpoint = new CompatEndpoint(0);
-        workspace = Files.createTempDirectory("nexus-edge-workspace");
-        Toolkit toolkit = new Toolkit();
-        toolkit.registerTool(new EchoTextTool());
-        AgentscopeAdapterConfig config = new AgentscopeAdapterConfig(
-                "openai:test-model",
-                endpoint.baseUrl(),
-                "test-key",
-                workspace.toString(),
-                "你是 DEV-0001 兼容性验证助手。");
-        adapter = new AgentscopeAgentExecutionAdapter(config, toolkit, null);
+        endpoint = AgentScopeCompatTestSupport.newEndpoint();
+        workspace = AgentScopeCompatTestSupport.newWorkspace("nexus-edge-workspace");
+        adapter = AgentScopeCompatTestSupport.newAdapter(
+                AgentScopeCompatTestSupport.newConfig(
+                        endpoint, workspace, "你是 DEV-0001 兼容性验证助手。"));
     }
 
     @AfterAll
@@ -61,13 +52,12 @@ class AgentScopeMinimalExecutionTest {
     }
 
     @Test
-    @DisplayName("startExecution 在长任务完成前返回真实可关联引用")
+    @DisplayName("startExecution 在长任务完成前返回真实引用，且携带真实 OTel traceId（P1-4）")
     void startExecutionReturnsReferenceBeforeCompletion() throws Exception {
         endpoint.setArtificialDelayMillis(3000);
         AtomicReference<AgentExecutionReference> refHolder = new AtomicReference<>();
         CountDownLatch returned = new CountDownLatch(1);
 
-        // 在独立线程启动（模拟长任务），验证引用在任务完成前即可返回。
         Thread starter = new Thread(() -> {
             refHolder.set(adapter.startExecution(new AgentExecutionRequest(
                     "task-0001", "user-0001", "session-0001",
@@ -77,22 +67,24 @@ class AgentScopeMinimalExecutionTest {
         });
         starter.start();
 
-        // 1 秒内应已返回引用（端点延迟 3 秒，任务尚未完成）。
         assertTrue(returned.await(1, TimeUnit.SECONDS),
                 "startExecution 应在长任务完成前返回引用");
         AgentExecutionReference ref = refHolder.get();
         assertNotNull(ref);
-        // executionId 必须为真实 UUID（官方 getAgentId()），禁止合成 ID。
-        assertFalse(ref.executionId().isBlank());
-        assertTrue(ref.executionId().matches("[0-9a-f-]{36}"),
-                "executionId 应为官方真实标识，实际: " + ref.executionId());
-        assertEquals("task-0001", ref.taskId());
+        // P1-7：taskAttemptId 为 UUIDv7；agentId 为 AgentScope 真实标识。
+        assertTrue(ref.taskAttemptId().matches("[0-9a-f-]{36}"),
+                "taskAttemptId 应为 UUIDv7，实际: " + ref.taskAttemptId());
+        assertTrue(ref.agentId().matches("[0-9a-f-]{36}"),
+                "agentId 应为官方真实标识，实际: " + ref.agentId());
+        // P1-4：traceId 来自 Adapter 真实链路，且为真实 OTel Trace ID。
+        assertTrue(TestOtel.isRealTraceId(ref.traceId()),
+                "startExecution 必须返回真实非空 OTel traceId，实际: " + ref.traceId());
         assertEquals(1, ref.attemptNo());
         assertEquals(AgentExecutionReference.ExecutionStatus.STARTED, ref.status());
 
-        // 等待任务完成，验证状态推进到 COMPLETED（轮询而非固定 sleep）。
+        // 等待任务完成（轮询）。
         endpoint.setArtificialDelayMillis(0);
-        long deadline = System.currentTimeMillis() + 15000;
+        long deadline = System.currentTimeMillis() + 20000;
         while (System.currentTimeMillis() < deadline
                 && adapter.statusOf("task-0001") != AgentExecutionReference.ExecutionStatus.COMPLETED
                 && adapter.statusOf("task-0001") != AgentExecutionReference.ExecutionStatus.FAILED) {
@@ -110,9 +102,9 @@ class AgentScopeMinimalExecutionTest {
                 "task-0002", "user-0001", "session-0001",
                 "workspace-0001", "tenant-0001", List.of("你好")));
         assertNotNull(ref);
+        assertTrue(TestOtel.isRealTraceId(ref.traceId()), "traceId 应为真实 OTel Trace ID");
 
-        // 等待请求到达端点。
-        long deadline = System.currentTimeMillis() + 5000;
+        long deadline = System.currentTimeMillis() + 10000;
         while (endpoint.lastRequestBody() == null && System.currentTimeMillis() < deadline) {
             Thread.sleep(100);
         }

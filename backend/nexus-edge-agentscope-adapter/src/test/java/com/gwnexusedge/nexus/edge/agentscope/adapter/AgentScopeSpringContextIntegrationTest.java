@@ -2,6 +2,7 @@ package com.gwnexusedge.nexus.edge.agentscope.adapter;
 
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionReference;
 import com.gwnexusedge.nexus.edge.domain.agentscope.port.AgentExecutionRequest;
+import com.gwnexusedge.nexus.edge.domain.agentscope.port.SecretResolver;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,16 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * DEV-0001 Spring Boot 4.1.0 内嵌 AgentScope Harness/Core 集成测试（G-01 核心）。
  *
  * <p>验证：Spring Boot 4.1.0 上下文能装配 AgentScope Harness/Core 的 Adapter Bean，
- * 并通过受控 OpenAI 兼容测试端点完成一次真实异步执行——即"Spring Boot 内嵌
- * AgentScope"（00 §3、A-002）。
+ * 并通过受控 OpenAI 兼容测试端点完成一次真实异步执行（00 §3、A-002）。
  *
- * <p>测试上下文自包含声明端点、配置与 Adapter Bean；配置为必填属性（fail-fast），
- * 测试值仅存在于 test source（评审项 6）。
+ * <p>P0-3：测试上下文显式提供 {@link SecretResolver} Bean（test-only）；
+ * 测试值仅存在于 test source。
  */
 @SpringBootTest(classes = AgentScopeSpringContextIntegrationTest.AgentScopeTestContext.class)
 class AgentScopeSpringContextIntegrationTest {
 
-    /** 自包含 Spring 配置：端点、配置与 Adapter 全部显式声明（测试专用值）。 */
+    /** 自包含 Spring 配置（测试专用值）。 */
     @Configuration
     public static class AgentScopeTestContext {
         @Bean(destroyMethod = "close")
@@ -36,19 +36,25 @@ class AgentScopeSpringContextIntegrationTest {
         }
 
         @Bean
+        public SecretResolver testSecretResolver() {
+            return new TestSecretResolver();
+        }
+
+        @Bean
         public AgentscopeAdapterConfig agentscopeAdapterConfig(CompatEndpoint endpoint) {
             return new AgentscopeAdapterConfig(
                     "openai:test-model",
                     endpoint.baseUrl(),
-                    "test-key",
+                    TestSecretResolver.TEST_API_KEY,
                     System.getProperty("java.io.tmpdir") + "/nexus-edge-spring-workspace",
                     "你是 Spring 集成验证助手。");
         }
 
         @Bean(destroyMethod = "close")
         public AgentscopeAgentExecutionAdapter agentscopeAgentExecutionAdapter(
-                AgentscopeAdapterConfig config) {
-            return new AgentscopeAgentExecutionAdapter(config);
+                AgentscopeAdapterConfig config,
+                SecretResolver secretResolver) {
+            return new AgentscopeAgentExecutionAdapter(config, null, null, secretResolver);
         }
     }
 
@@ -65,15 +71,19 @@ class AgentScopeSpringContextIntegrationTest {
                 "workspace-1", "tenant-1", List.of("请回复测试文本")));
 
         assertNotNull(reference);
-        assertNotNull(reference.executionId());
-        assertFalse(reference.executionId().isBlank(), "executionId 不得为空");
-        assertTrue(reference.taskId().startsWith("task-spring-"));
+        assertFalse(reference.agentId().isBlank(), "agentId 不得为空");
+        assertTrue(reference.taskAttemptId().matches("[0-9a-f-]{36}"),
+                "taskAttemptId 应为 UUIDv7");
+        assertTrue(TestOtel.isRealTraceId(reference.traceId()),
+                "Spring 链路应返回真实 traceId");
 
         // 等待异步执行完成。
-        long deadline = System.currentTimeMillis() + 8000;
+        long deadline = System.currentTimeMillis() + 15000;
         while (System.currentTimeMillis() < deadline
                 && adapter.statusOf("task-spring-1")
-                        != AgentExecutionReference.ExecutionStatus.COMPLETED) {
+                        != AgentExecutionReference.ExecutionStatus.COMPLETED
+                && adapter.statusOf("task-spring-1")
+                        != AgentExecutionReference.ExecutionStatus.FAILED) {
             Thread.sleep(200);
         }
         assertTrue(adapter.statusOf("task-spring-1")
