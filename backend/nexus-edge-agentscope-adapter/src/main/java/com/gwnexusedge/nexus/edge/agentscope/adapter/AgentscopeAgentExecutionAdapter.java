@@ -44,6 +44,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
     private final Path workspace;
     private final Toolkit toolkit;
     private final Map<String, HarnessAgent> agentsByTaskId = new ConcurrentHashMap<>();
+    private final Map<String, String> sessionByTaskId = new ConcurrentHashMap<>();
     private final Map<String, Disposable> subscriptions = new ConcurrentHashMap<>();
     private final AtomicInteger sequence = new AtomicInteger();
 
@@ -76,6 +77,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                 .toolkit(toolkit)
                 .build();
         agentsByTaskId.put(request.taskId(), agent);
+        sessionByTaskId.put(request.taskId(), request.sessionId());
 
         RuntimeContext ctx = RuntimeContext.builder()
                 .sessionId(request.sessionId())
@@ -101,13 +103,20 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         if (agent == null) {
             throw new IllegalStateException("Task " + reference.taskId() + " 不存在可取消的执行");
         }
-        // 官方 interrupt 语义：请求取消正在运行的执行。
-        agent.interrupt();
+        String sessionId = sessionByTaskId.getOrDefault(reference.taskId(), "default");
+        // 官方 interrupt 语义：按 (userId, sessionId) 精准中断在途执行。
+        // 注意：HarnessAgent.interrupt()/interrupt(Msg) 使用 defaultSessionId，
+        // 必须通过官方 delegate.interrupt(RuntimeContext) 按实际会话中断。
+        RuntimeContext ctx = RuntimeContext.builder()
+                .sessionId(sessionId)
+                .userId("user-" + reference.taskId())
+                .build();
+        agent.getDelegate().interrupt(ctx);
         Disposable subscription = subscriptions.remove(reference.taskId());
         if (subscription != null) {
             subscription.dispose();
         }
-        log.info("Task {} 已请求取消", reference.taskId());
+        log.info("Task {} 已请求取消（sessionId={}）", reference.taskId(), sessionId);
     }
 
     @Override

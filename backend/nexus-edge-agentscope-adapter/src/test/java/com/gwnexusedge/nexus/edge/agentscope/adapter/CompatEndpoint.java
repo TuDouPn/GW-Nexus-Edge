@@ -25,7 +25,9 @@ public final class CompatEndpoint implements AutoCloseable {
 
     private final HttpServer server;
     private final AtomicReference<String> lastRequestBody = new AtomicReference<>();
+    private final java.util.List<String> allRequestBodies = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final AtomicBoolean failWith500 = new AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicLong artificialDelayMillis = new java.util.concurrent.atomic.AtomicLong(0);
 
     /**
      * 启动测试端点。
@@ -52,8 +54,24 @@ public final class CompatEndpoint implements AutoCloseable {
         failWith500.set(fail);
     }
 
+    /** 设置每个请求的人工延迟（毫秒），用于验证取消运行中任务。 */
+    public void setArtificialDelayMillis(long millis) {
+        artificialDelayMillis.set(millis);
+    }
+
     public String lastRequestBody() {
         return lastRequestBody.get();
+    }
+
+    /** 全部请求体列表（用于观察完整调用序列，例如 Memory 中间件与主调用的关系）。 */
+    public java.util.List<String> allRequestBodies() {
+        return java.util.List.copyOf(allRequestBodies);
+    }
+
+    /** 重置记录的请求体，便于用例间隔离。 */
+    public void resetRequests() {
+        allRequestBodies.clear();
+        lastRequestBody.set(null);
     }
 
     private void handleHealth(HttpExchange exchange) throws IOException {
@@ -61,8 +79,18 @@ public final class CompatEndpoint implements AutoCloseable {
     }
 
     private void handleChatCompletions(HttpExchange exchange) throws IOException {
+        long delay = artificialDelayMillis.get();
+        if (delay > 0) {
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         lastRequestBody.set(body);
+        allRequestBodies.add(body);
 
         if (failWith500.get()) {
             respond(exchange, 500, "{\"error\":{\"message\":\"injected server error\",\"type\":\"server_error\"}}");
@@ -70,13 +98,40 @@ public final class CompatEndpoint implements AutoCloseable {
         }
 
         boolean stream = body.contains("\"stream\":true");
-        if (stream) {
+        boolean hasTools = body.contains("\"tools\"");
+        if (stream && hasTools) {
+            // 主调用为流式且携带工具定义：以 SSE 返回一次 tool_call，验证 Tool Calling 链路。
+            streamToolCallResponse(exchange);
+        } else if (stream) {
             streamResponse(exchange);
-        } else if (body.contains("\"tools\"")) {
-            // 请求携带工具定义时，返回一次工具调用，验证官方 Tool Calling 链路。
+        } else if (hasTools) {
+            // 非流式且携带工具定义时，返回一次工具调用。
             respond(exchange, 200, toolCallResponseBody());
         } else {
             respond(exchange, 200, nonStreamResponseBody());
+        }
+    }
+
+    private void streamToolCallResponse(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+        exchange.sendResponseHeaders(200, 0);
+        try (OutputStream out = exchange.getResponseBody()) {
+            String[] chunks = {
+                "data: {\"id\":\"chatcmpl-test-tool\",\"object\":\"chat.completion.chunk\","
+                    + "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null},"
+                    + "\"finish_reason\":null}]}\n\n",
+                "data: {\"id\":\"chatcmpl-test-tool\",\"object\":\"chat.completion.chunk\","
+                    + "\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_test_0001\","
+                    + "\"type\":\"function\",\"function\":{\"name\":\"echo_text\",\"arguments\":\"{\\\"text\\\":\\\"来自工具的测试参数\\\"}\"}}]},"
+                    + "\"finish_reason\":null}]}\n\n",
+                "data: {\"id\":\"chatcmpl-test-tool\",\"object\":\"chat.completion.chunk\","
+                    + "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+                "data: [DONE]\n\n"
+            };
+            for (String chunk : chunks) {
+                out.write(chunk.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
         }
     }
 
