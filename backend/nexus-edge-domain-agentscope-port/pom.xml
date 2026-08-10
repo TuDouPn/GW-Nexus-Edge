@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gwnexusedge</groupId>
+        <artifactId>nexus-edge-backend</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>nexus-edge-domain-agentscope-port</artifactId>
+    <name>GW Nexus Edge Domain - AgentScope Port</name>
+    <description>
+        AgentScope 边界的已冻结业务语义（00_DECISIONS.md A-004、08_AGENTSCOPE_AND_SKILL.md §2）。
+        本模块是纯领域层：禁止依赖任何 io.agentscope 类型或任何基础设施。
+        Adapter 实现依赖本 Port；领域层永远不依赖 Adapter。
+    </description>
+
+    <dependencies>
+        <!-- 仅测试 Port 自身契约使用 JUnit 5；无任何运行时第三方依赖。 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

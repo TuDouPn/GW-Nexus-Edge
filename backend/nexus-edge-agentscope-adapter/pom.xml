@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gwnexusedge</groupId>
+        <artifactId>nexus-edge-backend</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>nexus-edge-agentscope-adapter</artifactId>
+    <name>GW Nexus Edge - AgentScope Adapter</name>
+    <description>
+        DEV-0001 兼容性验证用的 AgentScope Java 2.0.1 Adapter。
+        依赖领域 Port（nexus-edge-domain-agentscope-port）与官方 AgentScope SDK。
+        领域层不依赖本 Adapter。
+    </description>
+
+    <dependencies>
+        <!-- 领域 Port：本 Adapter 唯一实现的契约。 -->
+        <dependency>
+            <groupId>com.gwnexusedge</groupId>
+            <artifactId>nexus-edge-domain-agentscope-port</artifactId>
+        </dependency>
+
+        <!--
+          AgentScope 官方 SDK，版本由 agentscope-bom:2.0.1 导入。
+          agentscope-harness 传递引入 agentscope-core（HarnessAgent / ReActAgent / Typed Event）。
+          OpenAI 兼容模型扩展：DEV-0001 仅用于受控测试端点；它是下游模型 Test Double，
+          不是 Fake AgentScope，只能证明运行时与协议集成，不构成任何生产认证。
+        -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-openai</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-redis</artifactId>
+            <!--
+              Redis 状态存储扩展已核验 2.0.1 存在。
+              恢复边界（OQ-007）先由能力矩阵建立结论，再决定是否启用 Redis 测试；
+              参见 RecoveryCapabilityReportTest 与 docs/blueprint/08 §9、22 §6。
+            -->
+        </dependency>
+
+        <!-- Spring Boot 用于 G-01：验证 Harness/Core 可内嵌于 Spring Boot 4.1.0 上下文。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- 测试范围 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Testcontainers 用于可选的 Redis 恢复测试（仅在能力矩阵支持时启用）。 -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>1.20.6</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      GW Nexus Edge V1 后端 reactor。
+      DEV-0001 范围：Java 21 + Spring Boot 4.1.0 + AgentScope Java 2.0.1 兼容性验证。
+      版本由 docs/blueprint/00_DECISIONS.md 冻结，禁止静默降级。
+      模块约定见 docs/blueprint/13_ENGINEERING_STANDARD.md。
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.gwnexusedge</groupId>
+    <artifactId>nexus-edge-backend</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>GW Nexus Edge Backend</name>
+    <description>GW Nexus Edge 后端 reactor；DEV-0001 建立 AgentScope 兼容性基线。</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- 由 00_DECISIONS.md §3 冻结；已于 2026-08-10 在 Maven Central 核验 -->
+        <agentscope.version>2.0.1</agentscope.version>
+        <!-- AgentScope core/harness/扩展版本由官方 BOM 统一管理 -->
+    </properties>
+
+    <modules>
+        <module>nexus-edge-domain-agentscope-port</module>
+        <module>nexus-edge-agentscope-adapter</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+              采用 AgentScope 官方 BOM（io.agentscope:agentscope-bom:2.0.1）：
+              作为 agentscope-core/harness 及全部扩展版本的唯一版本来源。
+              已于 2026-08-10 在 Maven Central 核验（HTTP 200，POM 已检查）。
+            -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-bom</artifactId>
+                <version>${agentscope.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.gwnexusedge</groupId>
+                <artifactId>nexus-edge-domain-agentscope-port</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                        <parameters>true</parameters>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <trimStackTrace>false</trimStackTrace>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>
