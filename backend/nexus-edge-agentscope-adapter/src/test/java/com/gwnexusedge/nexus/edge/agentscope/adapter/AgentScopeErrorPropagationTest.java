@@ -48,8 +48,12 @@ class AgentScopeErrorPropagationTest {
 
     @AfterAll
     void tearDown() {
-        agent.close();
-        endpoint.close();
+        if (agent != null) {
+            agent.close();
+        }
+        if (endpoint != null) {
+            endpoint.close();
+        }
     }
 
     @Test

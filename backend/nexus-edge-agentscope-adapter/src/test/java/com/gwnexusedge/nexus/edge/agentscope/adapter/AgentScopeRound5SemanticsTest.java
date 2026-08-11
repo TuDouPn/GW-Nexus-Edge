@@ -60,8 +60,12 @@ class AgentScopeRound5SemanticsTest {
 
     @AfterAll
     void tearDown() {
-        adapter.close();
-        endpoint.close();
+        if (adapter != null) {
+            adapter.close();
+        }
+        if (endpoint != null) {
+            endpoint.close();
+        }
     }
 
     @Test
@@ -203,6 +207,8 @@ class AgentScopeRound5SemanticsTest {
 
         assertFalse(RuntimeContextProbeTool.OBSERVED.isEmpty(),
                 "真实 AgentScope Tool 应被调用并读取 RuntimeContext");
+        // 真实运行证据：输出 Tool 从 RuntimeContext 读到的 scoped 标识与业务 extras。
+        System.out.println("=== 真实 Tool 执行证据（OBSERVED）: " + RuntimeContextProbeTool.OBSERVED + " ===");
         boolean found = RuntimeContextProbeTool.OBSERVED.values().stream()
                 .anyMatch(v -> v.equals("workspace-r5-tool|tenant-r5-tool"));
         assertTrue(found,

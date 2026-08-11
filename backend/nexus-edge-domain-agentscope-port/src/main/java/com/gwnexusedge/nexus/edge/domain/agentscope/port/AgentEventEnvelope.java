@@ -10,14 +10,15 @@ package com.gwnexusedge.nexus.edge.domain.agentscope.port;
  * <p>标识语义（P1-Execution-Id）：executionId 承载 AgentScope Agent 实例标识
  * （官方 getAgentId，构建时 UUID），用于把事件关联到所属 Agent 执行；执行级
  * 更细粒度标识（replyId）可从 {@code summary} 或后续持久化层的事件游标获得。
- * eventId 为官方事件携带的稳定标识，供标识与后续 {@code Last-Event-ID} 续传
- * （06 §5）；同一 Task/Agent 执行的全部事件必须携带相同 taskId/executionId。
+ * eventId 由 Nexus 生成（UUIDv7，P0-3），供 SSE {@code Last-Event-ID} 断线续传
+ * （06 §5）；同一 Task/Agent 执行的全部事件必须携带相同 taskId/executionId，
+ * eventId 必须全局唯一且不依赖 AgentScope 官方事件 id。
  *
  * @param taskId      事件所属的业务 Task 标识
  * @param type        业务事件类型（例如 STARTED、TOOL_STARTED、TOOL_COMPLETED、COMPLETED、FAILED）
  * @param executionId AgentScope Agent 实例标识（真实来源，对领域层不透明）
  * @param summary     安全、脱敏后的摘要（绝不携带原始 Prompt / Secret / 思维链）
- * @param eventId     官方事件标识（供 Last-Event-ID 续传，P1-8）
+ * @param eventId     Nexus 生成的事件标识（UUIDv7；SSE Last-Event-ID 游标）
  */
 public record AgentEventEnvelope(
         String taskId,

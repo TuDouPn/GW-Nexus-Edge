@@ -50,8 +50,12 @@ class AgentScopeToolCallingTest {
 
     @AfterAll
     void tearDown() {
-        adapter.close();
-        endpoint.close();
+        if (adapter != null) {
+            adapter.close();
+        }
+        if (endpoint != null) {
+            endpoint.close();
+        }
     }
 
     @Test

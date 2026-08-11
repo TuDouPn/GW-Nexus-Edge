@@ -16,8 +16,8 @@ import java.util.concurrent.Flow;
  *       后者绝不再发起第二次执行；</li>
  *   <li>{@link #streamExecutionEvents} 返回 JDK 内置 {@link Flow.Publisher}（零依赖、
  *       适合长期异步/SSE），Publisher 在{@link #startExecution} 时即建立，避免订阅前丢事件；</li>
- *   <li>事件携带 eventId（官方事件 id）供标识；Last-Event-ID 断线续传属于后续持久化
- *       业务事件层职责，本 Port 只保证事件携带可续传标识（06 §5）。</li>
+ *   <li>事件携带 eventId（Nexus 生成，UUIDv7，P0-3）供标识与续传；Last-Event-ID
+ *       断线续传属于后续持久化业务事件层职责，本 Port 只保证事件携带可续传标识（06 §5）。</li>
  * </ul>
  */
 public interface AgentExecutionPort {

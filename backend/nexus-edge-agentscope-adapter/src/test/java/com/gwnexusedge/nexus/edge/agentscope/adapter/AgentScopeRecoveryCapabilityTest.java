@@ -55,7 +55,10 @@ class AgentScopeRecoveryCapabilityTest {
 
     @AfterAll
     void tearDown() {
-        endpoint.close();
+        // P2：@BeforeAll 失败时资源为 null，清理必须 null-safe（避免二次 NPE）。
+        if (endpoint != null) {
+            endpoint.close();
+        }
     }
 
     @Test
@@ -173,9 +176,13 @@ class AgentScopeRecoveryCapabilityTest {
                             + "；请求数=" + endpoint.allRequestBodies().size());
 
             // 内容级验证：State Store 中同一会话的上下文仍含标记。
-            // P0-2：AgentScope 会话键为复合命名空间 workspace:tenant:session。
+            // P0-1/P0-4：AgentScope 会话按长期 Runtime Identity 键控——
+            // scopedUserId = b64(tenant).b64(workspace).b64(user)，scopedSessionId = b64(session)。
             AgentStateStore reloaded = new JsonFileAgentStateStore(stateDir);
-            var loaded = reloaded.get("user-recovery-2", "workspace-1:tenant-1:session-recovery-2",
+            var loaded = reloaded.get(
+                    AgentRuntimeIdentityMapper.scopedUserId(
+                            "tenant-1", "workspace-1", "user-recovery-2"),
+                    AgentRuntimeIdentityMapper.scopedSessionId("session-recovery-2"),
                     "agent_state", AgentState.class);
             assertTrue(loaded.isPresent(), "重新加载后会话应存在");
             String loadedText = loaded.get().getContext().stream()

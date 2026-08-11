@@ -39,7 +39,9 @@ class AgentScopeSecretResolutionTest {
 
     @AfterAll
     void tearDown() {
-        endpoint.close();
+        if (endpoint != null) {
+            endpoint.close();
+        }
     }
 
     @Test

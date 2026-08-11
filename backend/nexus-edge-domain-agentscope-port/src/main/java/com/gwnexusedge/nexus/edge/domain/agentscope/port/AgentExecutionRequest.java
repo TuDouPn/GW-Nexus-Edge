@@ -11,8 +11,8 @@ import java.util.List;
  * @param taskId      业务 Task 标识
  * @param userId      执行者用户标识
  * @param sessionId   限定本次执行的会话标识
- * @param workspaceId 工作空间标识（用于运行时上下文的信息字段）
- * @param tenantId    租户标识（用于运行时上下文的信息字段）
+ * @param workspaceId 工作空间标识（运行时上下文必需；缺失时 fail-closed）
+ * @param tenantId    租户标识（运行时上下文必需；缺失时 fail-closed）
  * @param messages    按顺序排列的业务消息（文本），作为执行输入
  */
 public record AgentExecutionRequest(
@@ -32,6 +32,14 @@ public record AgentExecutionRequest(
         }
         if (sessionId == null || sessionId.isBlank()) {
             throw new IllegalArgumentException("sessionId 不允许为空");
+        }
+        // P0-4：workspaceId/tenantId 是 AgentScope Runtime Identity 的必需分量，
+        // 缺失时 fail-closed，禁止以 null→空串或冒号拼接等临时方案掩盖。
+        if (workspaceId == null || workspaceId.isBlank()) {
+            throw new IllegalArgumentException("workspaceId 不允许为空（Runtime Identity fail-closed）");
+        }
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new IllegalArgumentException("tenantId 不允许为空（Runtime Identity fail-closed）");
         }
         messages = messages == null ? List.of() : List.copyOf(messages);
     }
