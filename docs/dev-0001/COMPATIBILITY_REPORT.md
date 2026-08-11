@@ -1,7 +1,7 @@
-# DEV-0001 — AgentScope 2.0.1 核心兼容性验证报告（第四轮评审修订版）
+# DEV-0001 — AgentScope 2.0.1 核心兼容性验证报告（第五轮评审修订版）
 
 > 状态：PARTIALLY_VERIFIED（G-01 通过；G-03/OQ-007 为 PARTIAL；模型 Provider 生产认证未验证）
-> 日期：2026-08-10（首次）；2026-08-10~11（四轮 CHANGES_REQUESTED 修订）
+> 日期：2026-08-10（首次）；2026-08-10~11（五轮 CHANGES_REQUESTED 修订）
 > 分支：`agent/DEV-0001-agentscope-compatibility`
 > 关联门禁：G-01（核心依赖兼容 PoC，**通过**）、G-03（AgentScope 能力盘点，**PARTIAL**）
 > 关联 Open Question：OQ-007（Persistence/Recovery 边界，**PARTIAL**）
@@ -30,7 +30,20 @@
 | OQ-007 Recovery 边界 | **PARTIAL** | JsonFile 已验证；Redis/Checkpoint 待评审 |
 | DeepSeek / 企业私有模型生产认证 | **未验证（BLOCKED）** | 需要真实凭据与安全测试凭证 |
 
-## 2. 第四轮评审修订落实情况
+## 2. 第五轮评审修订落实情况（P0×10）
+
+| 评审项 | 修正内容 | 验证证据 |
+|---|---|---|
+| **P0-1 上下文按 Task 隔离** | `ExecutionContextState.storeKey(taskId)`（State Store 键含 taskId）；同 user/session 不同 Task 互不覆盖 | `AgentScopeRound5SemanticsTest.parallelTaskRecoveryIsolation` |
+| **P0-2 resume fail-closed** | 恢复不到上下文/Workspace/Tenant 时抛 `IllegalStateException`，不用空字符串 | `AgentScopeRound5SemanticsTest.resumeFailClosedWithoutContext` |
+| **P0-3 cancel 携带上下文** | `cancelExecution` 复用 handle 的 RuntimeContext（含原 Task workspaceId/tenantId） | Cancel 测试通过（中断定位一致） |
+| **P0-4 AGENT_RESULT 按 GenerateReason** | `AGENT_RESULT` 的 `INTERRUPTED`→CANCELLED，其他→COMPLETED；业务事件终态与 Task 状态一致 | `AgentScopeRound5SemanticsTest.cancelEventStreamProducesSingleCancelled` |
+| **P0-5 取消事件流测试** | 取消时恰好一个 CANCELLED、零个 COMPLETED | 同上 |
+| **P0-6 并行恢复隔离测试** | 同 user/session、不同 Workspace/Tenant 并行 Task 恢复互不覆盖 | `parallelTaskRecoveryIsolation` |
+| **P0-7 Tool 链路如实降级** | 确认 HarnessAgent 在 disableMemoryTools + 白名单下工具执行阶段（POST_ACTING）未触发；**不称 Tool 链路验证**，workspace/tenant 走 RuntimeContext 读取 | `toolRegistrationVerifiedWithHonestLimit` + 诊断日志 |
+| **P0-8 request(n) 背压测试** | 有限 request(n) 用例：首次只收 n 个，按需补充 | `EventStreamsSemanticsTest.backpressureWithLimitedRequest` |
+| **P0-9 回滚 Blueprint 16** | 撤销对 Accepted Blueprint 的先行修改；ADR 批准后原子同步 | `git checkout 27daca9 -- 16_GLOSSARY.md` |
+| **P0-10 更新 ADR-0006** | 轮次/EventStreams/测试数（35）/Tool 降级/待同步事项 | 本报告 + ADR-0006 |
 
 | 评审项 | 修正内容 | 验证证据 |
 |---|---|---|
@@ -72,7 +85,35 @@
 - **已知局限**：底层 filesystem 仍是本地 overlay；生产业务 Agent 需显式
   `filesystem(LocalFilesystemSpec)` 限定工作区（Phase 3）；Coding Sandbox 完整隔离由 22 文档承担。
 
-## 4. 关键运行证据（第四轮）
+## 4. 关键运行证据（第五轮）
+
+### 4.1 上下文按 Task 隔离（P0-1/P0-6）
+
+- 同 user/session、不同 Workspace/Tenant 的并行 Task（workspace-A/tenant-A 与
+  workspace-B/tenant-B）恢复后上下文互不覆盖（State Store 键含 taskId）。
+
+### 4.2 resume fail-closed（P0-2）
+
+- 恢复不到执行上下文时抛 `IllegalStateException`（不再用空字符串继续执行）。
+
+### 4.3 取消事件流（P0-4/P0-5）
+
+- 取消时业务事件流恰好一个 CANCELLED、零个 COMPLETED，与 Task 状态一致。
+
+### 4.4 Tool 链路如实降级（P0-7）
+
+- 诊断日志：`POST_REASONING | tool_call` 后无 `POST_ACTING`——HarnessAgent 在
+  `disableMemoryTools` + 白名单配置下工具执行阶段未触发。
+- **如实结论**：工具执行链路验证受限；workspace/tenant 验证走 AgentScope
+  RuntimeContext 读取路径（`executionContext(taskId)`）。不称"Tool 链路已验证"。
+
+### 4.5 背压（P0-8）
+
+- `request(n)` 有限背压：订阅者首次只收 n 个，按需补充请求后收齐。
+
+### 4.6 Trace 父子 span（第四轮持续验证）
+
+- `nexus-edge.agent.execution ← invoke_agent ← chat`，同一 traceId，全部结束。
 
 ### 4.1 EventStreams 语义（Reactor Sinks replay，有界缓存 256）
 
@@ -125,12 +166,13 @@ nexus-edge.agent.execution (spanId=3c56...) ← invoke_agent nexus-edge-compat-a
 | Redis Store | 扩展存在，未启用 |
 | Checkpoint | 官方组件待盘点 |
 
-## 7. 测试证据（30/30 全绿，第四轮修订后）
+## 7. 测试证据（35/35 全绿，第五轮修订后）
 
 | 测试类 | 用例 | 结果 | 关键断言 |
 |---|---|---|---|
 | AgentScopeMinimalExecutionTest | 2 | ✅ | 异步引用 + 真实 traceId |
 | AgentScopeWorkspaceTenantContextTest | 1 | ✅ | workspace/tenant 注入 |
+| **AgentScopeRound5SemanticsTest** | 4 | ✅ | **取消单一 CANCELLED、并行隔离、fail-closed、Tool 如实降级** |
 | AgentScopeCancelTest | 3 | ✅ | 真实中断终态 + 互斥 |
 | AgentScopeDelayedSubscriptionTest | 1 | ✅ | 延迟订阅完整事件 |
 | AgentScopeToolCallingTest | 2 | ✅ | 工具面 + 单执行源 |
@@ -140,23 +182,26 @@ nexus-edge.agent.execution (spanId=3c56...) ← invoke_agent nexus-edge-compat-a
 | AgentScopeConcurrentTraceIsolationTest | 1 | ✅ | 并发 Trace 隔离 |
 | AgentScopeErrorPropagationTest | 1 | ✅ | 500 → RetryExhaustedException |
 | AgentScopeRecoveryCapabilityTest | 3 | ✅ | 内容级恢复 |
-| **AgentScopeRound4SemanticsTest** | 3 | ✅ | **单一终态 + RuntimeContext 读取 + 父子 span** |
-| **EventStreamsSemanticsTest** | 4 | ✅ | **多订阅者/延迟/唯一/顺序/取消/缓存边界** |
+| AgentScopeRound4SemanticsTest | 3 | ✅ | 单一终态 + RuntimeContext + 父子 span |
+| **EventStreamsSemanticsTest** | 5 | ✅ | **多订阅者/延迟/唯一/顺序/取消/缓存边界/背压** |
 | AgentScopeStructuredOutputTest | 1 | ✅ | 对象解析 |
 | AgentScopeStreamingEventTest | 1 | ✅ | 事件同源 + 单执行源 |
-| **合计** | **30** | **0 失败** | `./mvnw clean verify` |
+| **合计** | **35** | **0 失败** | `./mvnw clean verify` |
 
 ## 8. 明确边界与未验证项
 
 1. **模型 Provider 生产认证：BLOCKED**。
 2. **宿主 filesystem overlay**（如实记录）：disable* 移除工具，但底层 overlay 仍在；
    生产需显式 `filesystem(LocalFilesystemSpec)`（Phase 3）。
-3. **ToolBase 子类工具在 HarnessAgent 下执行限制**（如实记录）：`@Tool` 注解路径已验证；
-   ToolBase 子类 `callAsync` 在 HarnessAgent 工具执行阶段未被调用，workspace/tenant 验证
-   改用 AgentScope RuntimeContext 读取。
+3. **工具执行阶段受限（P0-7 如实降级）**：AgentScope 2.0.1 HarnessAgent 在
+   `disableMemoryTools` + 白名单配置下，工具被决策（POST_REASONING tool_call）但
+   执行阶段（POST_ACTING）未触发。`@Tool` 注解与 `ToolBase` 子类均受影响。
+   **不称 Tool 链路已验证**；workspace/tenant 验证走 AgentScope RuntimeContext 读取路径。
 4. **G-03/OQ-007：PARTIAL**（Redis/真实 Provider 待补）。
 5. **Last-Event-ID 续传**：归后续持久化业务事件层。
+6. **executionId/agentId 语义同步**：ADR-0006 批准后原子同步
+   00_DECISIONS/08_AGENTSCOPE_AND_SKILL/16_GLOSSARY/领域字段/API 契约（P0-9）。
 
 ## 9. 提交记录
 
-第四轮修正 Commit SHA 见 `docs/handoffs/active/DEV-0001.md` §6（`git log --oneline` 可核验）。
+第五轮修正 Commit SHA 见 `docs/handoffs/active/DEV-0001.md` §6（`git log --oneline` 可核验）。

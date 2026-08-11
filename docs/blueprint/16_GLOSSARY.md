@@ -57,15 +57,11 @@
 | Domain Binding | Project Production Environment与系统/自定义精确FQDN的可验证关联 |
 | Security Finding | 由Gitleaks/Semgrep/Trivy等产生、进入统一Gate与Exception生命周期的风险记录 |
 | Security Exception | 绑定Finding、Commit/Digest、Scope和Expiry的限时受审计例外，不等于发布批准 |
-| AgentScope AgentId | AgentScope 官方 Agent 实例标识（构建时 UUID.randomUUID()）。**不是 Execution ID**——AgentScope 2.0.1 无独立 Execution ID 概念；与 Nexus TaskAttemptId（UUIDv7）分属不同语义层（关联 ADR-0006） |
-| Nexus TaskAttemptId | Nexus Edge 业务层生成的 TaskAttempt UUIDv7 业务主键，贯穿 Task 生命周期并映射到 AgentScope AgentId 与 OTel TraceId（关联 ADR-0006） |
 
 ## 禁止混用
 
 - 不将 Nexus Edge 称为 Agent Runtime。
 - 不将 Task 状态称为 AgentScope 生命周期。
-- **不将 AgentScope AgentId 称为 Execution ID**（AgentScope 2.0.1 无独立 Execution ID 概念；执行级细粒度标识为事件 replyId，由后续持久化层承载）。
-- **不将 Nexus TaskAttemptId 与 AgentScope AgentId 混用**：前者为 Nexus 业务主键（UUIDv7），后者为 AgentScope 实例标识（UUIDv4）。
 - V1.1 不把 Desktop Edge 或 Tauri 设备能力命名为 Runtime，避免与 AgentScope Runtime 混淆。
 - 不将业务审核称为 AgentScope HITL Tool Approval。
 - 不将应用日志称为审计。

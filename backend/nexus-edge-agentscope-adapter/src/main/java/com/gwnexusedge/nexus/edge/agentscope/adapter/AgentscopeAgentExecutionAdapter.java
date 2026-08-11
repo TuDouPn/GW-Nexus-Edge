@@ -100,12 +100,14 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         // P0-2：事件源必须在执行开始前建立（replay 语义，延迟订阅不丢事件）。
         EventStreams<AgentEventEnvelope> eventStreams = EventStreams.replayBounded();
 
-        // 第四轮：把 workspaceId/tenantId 作为可持久恢复的执行上下文保存到 State Store，
-        // 保证 start/resume 全链路一致（resume 时从 Store 恢复，不依赖 Request 自证）。
+        // P0-1：把 workspaceId/tenantId 作为可持久恢复的执行上下文保存到 State Store，
+        // 键按 Task 隔离（含 taskId），禁止同 user/session 不同 Task 覆盖；
+        // resume 时从 Store 恢复，不依赖 Request 自证。
         if (stateStore != null) {
             stateStore.save(request.userId(), request.sessionId(),
-                    ExecutionContextState.STORE_KEY,
-                    new ExecutionContextState(request.workspaceId(), request.tenantId(),
+                    ExecutionContextState.storeKey(request.taskId()),
+                    new ExecutionContextState(request.taskId(),
+                            request.workspaceId(), request.tenantId(),
                             request.userId(), request.sessionId()));
         }
 
@@ -205,10 +207,15 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                     "Task " + reference.taskId() + " 已进入终态 " + handle.status + "，不可取消");
         }
         handle.status = AgentExecutionReference.ExecutionStatus.CANCEL_REQUESTED;
-        RuntimeContext ctx = RuntimeContext.builder()
-                .sessionId(handle.request.sessionId())
-                .userId(handle.request.userId())
-                .build();
+        // P0-3：cancel 的 RuntimeContext 必须携带原 Task 的 workspaceId/tenantId
+        // （复用 handle 保存的执行上下文，保证 interrupt 定位同一会话）。
+        RuntimeContext ctx = handle.runtimeContext;
+        if (ctx == null) {
+            ctx = RuntimeContext.builder()
+                    .sessionId(handle.request.sessionId())
+                    .userId(handle.request.userId())
+                    .build();
+        }
         handle.agent.getDelegate().interrupt(ctx);
         log.info("Task {} 已请求取消（等待真实中断事件确认）", reference.taskId());
     }
@@ -231,16 +238,30 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         String newAgentId = resumed.getAgentId();
         String newTaskAttemptId = TaskAttemptId.newUuidV7();
 
-        // P1-9：resume 从 State Store 恢复 workspaceId/tenantId 上下文并注入 RuntimeContext
-        // （第四轮：全链路一致，不依赖 Request 自证）。
+        // P0-1/P0-2：resume 从 State Store 按 Task 隔离键恢复 workspaceId/tenantId；
+        // 恢复不到上下文、Workspace 或 Tenant 时 fail-closed（抛异常），
+        // 不得用空字符串继续执行。
         ExecutionContextState restored = null;
         if (stateStore != null) {
             restored = stateStore.get(reference.userId(), reference.sessionId(),
-                            ExecutionContextState.STORE_KEY, ExecutionContextState.class)
+                            ExecutionContextState.storeKey(reference.taskId()),
+                            ExecutionContextState.class)
                     .orElse(null);
         }
-        String workspaceId = restored != null ? restored.getWorkspaceId() : "";
-        String tenantId = restored != null ? restored.getTenantId() : "";
+        if (restored == null) {
+            throw new IllegalStateException(
+                    "Task " + reference.taskId() + " 恢复失败：State Store 中无执行上下文（fail-closed）");
+        }
+        if (restored.getWorkspaceId() == null || restored.getWorkspaceId().isBlank()) {
+            throw new IllegalStateException(
+                    "Task " + reference.taskId() + " 恢复失败：执行上下文缺少 workspaceId（fail-closed）");
+        }
+        if (restored.getTenantId() == null || restored.getTenantId().isBlank()) {
+            throw new IllegalStateException(
+                    "Task " + reference.taskId() + " 恢复失败：执行上下文缺少 tenantId（fail-closed）");
+        }
+        String workspaceId = restored.getWorkspaceId();
+        String tenantId = restored.getTenantId();
         // 业务 Task 标识沿用原引用的 taskId（贯穿全部 Attempt）；上下文由 Store 恢复。
         AgentExecutionRequest resumedRequest = new AgentExecutionRequest(
                 reference.taskId(), reference.userId(), reference.sessionId(),
@@ -408,20 +429,30 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
      * 把官方 AgentScope Typed Event 映射为业务安全事件（隐藏思维链、Secret 永不外泄）。
      * eventId 为官方事件 id，供标识；Last-Event-ID 续传属后续持久化层（P1-8）。
      *
-     * <p>单一终态（第四轮）：仅 {@code AGENT_RESULT} 映射 COMPLETED（携带最终结果）；
-     * {@code AGENT_END} 映射 PROGRESS（仅标记流结束，不作为业务终态），
-     * 避免同一执行产生两个 COMPLETED。业务终态由状态机 transitionTerminal 保证唯一。
+     * <p>单一终态（第四轮 + 第五轮 P0-4）：仅 {@code AGENT_RESULT} 映射业务终态事件，
+     * 且**根据 GenerateReason 决定类型**——{@code INTERRUPTED} → CANCELLED，
+     * 其他 → COMPLETED；{@code AGENT_END} 映射 PROGRESS（仅标记流结束）。
+     * 业务事件终态与 Task 状态（transitionTerminal）保持一致。
      */
     private AgentEventEnvelope mapEvent(ExecutionHandle handle, AgentEvent event) {
-        AgentEventEnvelope.AgentEventType type = switch (event.getType()) {
-            case AGENT_START -> AgentEventEnvelope.AgentEventType.STARTED;
-            case TOOL_CALL_START -> AgentEventEnvelope.AgentEventType.TOOL_STARTED;
-            case TOOL_CALL_END -> AgentEventEnvelope.AgentEventType.TOOL_COMPLETED;
-            case AGENT_RESULT -> AgentEventEnvelope.AgentEventType.COMPLETED;
-            // AGENT_END 仅标记流结束，不作为业务终态（避免双 COMPLETED）。
-            case AGENT_END -> AgentEventEnvelope.AgentEventType.PROGRESS;
-            default -> AgentEventEnvelope.AgentEventType.PROGRESS;
-        };
+        AgentEventEnvelope.AgentEventType type;
+        if (event instanceof AgentResultEvent result) {
+            // P0-4：AGENT_RESULT 根据 GenerateReason 映射 COMPLETED 或 CANCELLED。
+            Msg msg = result.getResult();
+            boolean interrupted = msg != null && msg.getGenerateReason() == GenerateReason.INTERRUPTED;
+            type = interrupted
+                    ? AgentEventEnvelope.AgentEventType.CANCELLED
+                    : AgentEventEnvelope.AgentEventType.COMPLETED;
+        } else {
+            type = switch (event.getType()) {
+                case AGENT_START -> AgentEventEnvelope.AgentEventType.STARTED;
+                case TOOL_CALL_START -> AgentEventEnvelope.AgentEventType.TOOL_STARTED;
+                case TOOL_CALL_END -> AgentEventEnvelope.AgentEventType.TOOL_COMPLETED;
+                // AGENT_END 仅标记流结束，不作为业务终态（避免双终态事件）。
+                case AGENT_END -> AgentEventEnvelope.AgentEventType.PROGRESS;
+                default -> AgentEventEnvelope.AgentEventType.PROGRESS;
+            };
+        }
         // taskId = 业务 Task 标识（request.taskId）；executionId = AgentScope Agent 标识。
         return new AgentEventEnvelope(
                 handle.request.taskId(),

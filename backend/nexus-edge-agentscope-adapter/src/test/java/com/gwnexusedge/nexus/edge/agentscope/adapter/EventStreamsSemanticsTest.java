@@ -139,6 +139,55 @@ class EventStreamsSemanticsTest {
         assertTrue(b.size() >= 2, "订阅者 B 不应受 A 取消影响");
     }
 
+    @Test
+    @DisplayName("P0-8：有限 request(n) 背压——订阅者只收到 n 个，按需补充请求")
+    void backpressureWithLimitedRequest() throws Exception {
+        EventStreams<AgentEventEnvelope> stream = EventStreams.replayBounded();
+        for (int i = 1; i <= 5; i++) {
+            stream.emit(event(i));
+        }
+        stream.complete();
+
+        // 订阅者只 request(2)：应恰好收到 2 个（背压生效，不一次性全推）。
+        List<AgentEventEnvelope> events = new ArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        stream.asFlowPublisher().subscribe(new Flow.Subscriber<>() {
+            private Flow.Subscription subscription;
+
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                this.subscription = subscription;
+                subscription.request(2); // 有限背压：只请求 2 个
+            }
+
+            @Override
+            public void onNext(AgentEventEnvelope item) {
+                events.add(item);
+                if (events.size() == 2) {
+                    // 补请求剩余，验证按需拉取。
+                    subscription.request(10);
+                }
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                done.countDown();
+            }
+
+            @Override
+            public void onComplete() {
+                done.countDown();
+            }
+        });
+
+        assertTrue(done.await(5, TimeUnit.SECONDS), "背压订阅应完成");
+        // 首次 request(2) 后应只收到 2 个，补请求后收到全部 5 个。
+        assertEquals(5, events.size(), "背压补请求后应收到全部事件");
+        // 顺序仍一致。
+        assertEquals("e1", events.get(0).summary());
+        assertEquals("e5", events.get(4).summary());
+    }
+
     private static List<AgentEventEnvelope> collect(EventStreams<AgentEventEnvelope> stream, String tag)
             throws Exception {
         List<AgentEventEnvelope> events = new ArrayList<>();
