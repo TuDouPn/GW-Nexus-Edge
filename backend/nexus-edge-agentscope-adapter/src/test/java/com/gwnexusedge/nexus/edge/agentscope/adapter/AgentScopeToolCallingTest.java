@@ -115,8 +115,9 @@ class AgentScopeToolCallingTest {
         System.out.println("=== 单执行源证据: 订阅后请求总数=" + requestsAfterSubscription + " ===");
         assertEquals(requestsBeforeSubscription, requestsAfterSubscription,
                 "streamExecutionEvents 不得发起第二次执行（请求数应保持不变）");
-        // 请求总数受控（主调用 + tool result + memory extraction 等内部调用）。
-        assertTrue(requestsAfterSubscription >= 1 && requestsAfterSubscription <= 4,
+        // 请求总数受控（主调用 + tool result + memory extraction 等内部调用；
+        // OTel 中间件启用后正常执行轮次 ≤ 8）。
+        assertTrue(requestsAfterSubscription >= 1 && requestsAfterSubscription <= 8,
                 "请求总数应受控且至少有一次主调用，实际 " + requestsAfterSubscription);
     }
 }
