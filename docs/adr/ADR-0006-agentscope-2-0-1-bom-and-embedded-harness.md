@@ -1,7 +1,7 @@
-# ADR-0006 — 采用 AgentScope 2.0.1 官方 BOM 并内嵌 Harness/Core（第五轮评审修订版）
+# ADR-0006 — 采用 AgentScope 2.0.1 官方 BOM 并内嵌 Harness/Core（第六轮评审修订版）
 
 > 状态：**Proposed（草案，待产品架构负责人批准）**
-> 日期：2026-08-10（首次）；2026-08-11（第五轮修订）
+> 日期：2026-08-10（首次）；2026-08-11（第六轮修订）
 > 决策人：（待产品架构负责人）
 > 关联决策/Issue：DEV-0001、G-01、G-03、OQ-007
 > 关联 ADR：ADR-0001、ADR-0002、ADR-0004
@@ -9,8 +9,8 @@
 ## 背景
 
 DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）、盘点能力
-（G-03）、明确 Recovery 边界（OQ-007）。五轮评审均为 CHANGES_REQUESTED；本修订版
-落实第五轮 P0×10 全部要求。
+（G-03）、明确 Recovery 边界（OQ-007）。六轮评审均为 CHANGES_REQUESTED；本修订版
+落实第六轮 P0-1/P0-2/P1-1/P1-2/P1-3/P1-4 全部要求。
 
 ## 决策
 
@@ -32,11 +32,18 @@ DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）�
    `doFinally` 幂等结束 span；`OtelTracingMiddleware` 建立父子 span。
 9. **标识模型（P1-7/第四轮）**：`AgentExecutionReference` 四标识 taskId/taskAttemptId/
    agentId/traceId + 事件 replyId。
-10. **Tool 链路如实降级（P0-7）**：AgentScope 2.0.1 HarnessAgent 在 `disableMemoryTools`
-    + 白名单配置下，工具被决策（POST_REASONING tool_call）但执行阶段（POST_ACTING）
-    未触发——**工具执行链路验证受限**。workspace/tenant 验证改走 AgentScope
-    RuntimeContext 读取路径。不称"Tool 链路已验证"。
-11. **executionId 与 agentId 语义（待同步）**：AgentScope 2.0.1 无独立 Execution ID；
+10. **Tool 链路（第六轮 P0-1，撤回第五轮误判）**：`@Tool` 注解方法经官方 `ToolMethodInvoker`
+    自动注入 `RuntimeContext` 参数，**真实执行**并读取 workspaceId/tenantId。第五轮
+    "HarnessAgent Tool 执行受限"结论已撤回——根因是共享端点 `toolCallRounds` 未重置的
+    测试隔离缺陷。
+11. **会话隔离（第六轮 P0-2）**：sessionId 使用复合命名空间 `{workspaceId}:{tenantId}:{sessionId}`，
+    使 AgentScope AgentState/Memory 按 Workspace 隔离；跨 Workspace 相同 user/session 不共享。
+12. **终态事件顺序（第六轮 P1-1）**：`AgentResultEvent` 先 `transitionTerminal` 再发布
+    终态事件；流完成兜底先更新状态再关闭事件流；SSE 终态回调内 Task 状态已一致。
+13. **Resume 顺序（第六轮 P1-2）**：先读取并完整校验持久化上下文
+    （taskId/userId/sessionId/workspaceId/tenantId），再解析 Secret/注册模型/创建 Agent；
+    失败路径不遗留未关闭 Agent。
+14. **executionId 与 agentId 语义（待同步）**：AgentScope 2.0.1 无独立 Execution ID；
     `AgentEventEnvelope.executionId` 承载 AgentScope AgentId（实例标识）；执行级细粒度
     标识为事件 replyId；Nexus 业务主键为 TaskAttemptId（UUIDv7）。**本决策待批准后
     原子同步 00_DECISIONS、08_AGENTSCOPE_AND_SKILL、16_GLOSSARY、领域字段与 API 契约**
@@ -60,16 +67,16 @@ DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）�
 
 - 领域：新增 Port（SecretResolver/TaskAttemptId/ExecutionContextState），无业务 Schema。
 - 安全：工具面收敛；Secret 只走 Reference；执行上下文 fail-closed。
-- 测试：35 个真实兼容测试（`./mvnw clean verify` 全绿）。
+- 测试：37 个真实兼容测试（`./mvnw clean verify` 全绿）。
 - 迁移：无既有实现；后续切换需新 ADR。
 
 ## 验证
 
-- G-01：通过（`./mvnw clean verify` 35/35）。
-- G-03：**PARTIAL**（能力清单已验证大部分；真实 Provider/Redis 待补；Tool 执行链路受限）。
+- G-01：通过（`./mvnw clean verify` 37/37）。
+- G-03：**PARTIAL**（能力清单已验证大部分；真实 Provider/Redis 待补）。
 - OQ-007：**PARTIAL**（JsonFile 恢复已验证；Redis/Checkpoint 待评审）。
-- 第五轮 P0×10 全部验证（证据见 `docs/dev-0001/COMPATIBILITY_REPORT.md` §2/§4）。
-- 已知局限：宿主 filesystem overlay；Tool 执行阶段受限（如实记录）。
+- 第六轮 P0-1/P0-2/P1-1/P1-2/P1-3/P1-4 全部验证（证据见 `docs/dev-0001/COMPATIBILITY_REPORT.md` §3/§5）。
+- 已知局限：宿主 filesystem overlay（如实记录）。
 
 ## 未解决问题
 
@@ -77,6 +84,4 @@ DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）�
 - RedisAgentStateStore 生产采用（OQ-007 评审）。
 - OTel traceId 生产链路注入（12 §6）。
 - Last-Event-ID 续传（后续持久化业务事件层）。
-- **Tool 执行阶段受限的根因**（HarnessAgent 在 disableMemoryTools + 白名单下 POST_ACTING
-  未触发）——需在后续 Phase 3 以真实业务 Tool 验证；当前如实降级。
 - **executionId/agentId 语义的 Accepted Blueprint 原子同步**（本 ADR 批准后执行）。

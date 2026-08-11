@@ -178,26 +178,36 @@ class AgentScopeRound5SemanticsTest {
     }
 
     @Test
-    @DisplayName("P0-7：工具注册验证（如实标注：HarnessAgent 下工具执行阶段受限，不称 Tool 链路验证）")
-    void toolRegistrationVerifiedWithHonestLimit() throws Exception {
-        // 如实记录：AgentScope 2.0.1 HarnessAgent 在 disableMemoryTools + 白名单配置下，
-        // 工具被决策（POST_REASONING tool_call）但执行阶段（POST_ACTING）未触发。
-        // 因此无法通过真实 Tool 链路验证 RuntimeContext 读取；workspace/tenant 验证
-        // 走 AgentScope RuntimeContext 读取路径（executionContext），并如实降级结论。
+    @DisplayName("P0-1：真实 AgentScope Tool（@Tool + RuntimeContext 参数）读取 workspaceId/tenantId")
+    void realAgentScopeToolReadsRuntimeContext() throws Exception {
+        RuntimeContextProbeTool.reset();
+        // P0-1：必须设置 endpoint 返回目标工具名 + 重置调用轮次（共享端点隔离）。
+        endpoint.resetToolCallRounds();
+        endpoint.setToolCallName(RuntimeContextProbeTool.NAME);
+        endpoint.setArtificialDelayMillis(1200);
+
         AgentExecutionReference ref = adapter.startExecution(new AgentExecutionRequest(
-                "task-r5-toolreg", "user-r5-toolreg", "session-r5-toolreg",
-                "workspace-r5-toolreg", "tenant-r5-toolreg",
-                List.of("请回复测试文本")));
+                "task-r5-tool", "user-r5-tool", "session-r5-tool",
+                "workspace-r5-tool", "tenant-r5-tool",
+                List.of("请调用 probe_execution_context 工具")));
         assertNotNull(ref);
 
-        // 可验证：工具已注册到白名单工具面（@Tool 注解 + RuntimeContext 参数方法）。
-        java.util.Set<String> surface = adapter.toolSurface("task-r5-toolreg");
-        assertTrue(surface.contains(RuntimeContextProbeTool.NAME),
-                "probe_execution_context 应注册到白名单工具面，实际 " + surface);
+        // 等待真实 Tool 执行并记录（@Tool 方法经 ToolMethodInvoker 注入 RuntimeContext）。
+        long deadline = System.currentTimeMillis() + 12000;
+        while (System.currentTimeMillis() < deadline
+                && RuntimeContextProbeTool.OBSERVED.isEmpty()) {
+            Thread.sleep(200);
+        }
+        endpoint.setArtificialDelayMillis(0);
+        endpoint.setToolCallName("echo_text");
 
-        // 如实降级：不断言 Tool 执行读取（官方运行时限制），仅记录结论。
-        System.out.println("P0-7 如实结论: HarnessAgent 下工具执行阶段受限（POST_REASONING 后未触发 "
-                + "POST_ACTING），workspace/tenant 验证改走 AgentScope RuntimeContext 读取路径");
+        assertFalse(RuntimeContextProbeTool.OBSERVED.isEmpty(),
+                "真实 AgentScope Tool 应被调用并读取 RuntimeContext");
+        boolean found = RuntimeContextProbeTool.OBSERVED.values().stream()
+                .anyMatch(v -> v.equals("workspace-r5-tool|tenant-r5-tool"));
+        assertTrue(found,
+                "真实 Tool 从 RuntimeContext 读取的 workspaceId/tenantId 应与注入一致"
+                        + "；观测=" + RuntimeContextProbeTool.OBSERVED);
     }
 
     private List<AgentEventEnvelope> collectAll(AgentExecutionReference ref) throws Exception {

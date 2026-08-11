@@ -111,12 +111,16 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                             request.userId(), request.sessionId()));
         }
 
-        // P1-9：RuntimeContext 注入 workspaceId/tenantId（可观测与审计上下文）。
+        // P0-2：RuntimeContext 注入 workspaceId/tenantId，且 sessionId 使用复合命名空间
+        // （{workspaceId}:{tenantId}:{sessionId}），使 AgentScope AgentState/Memory 按
+        // Workspace 隔离——跨 Workspace 相同 user/session 不共享会话状态。
         RuntimeContext ctx = RuntimeContext.builder()
-                .sessionId(request.sessionId())
+                .sessionId(namespacedSessionId(request.workspaceId(), request.tenantId(),
+                        request.sessionId()))
                 .userId(request.userId())
                 .put("workspaceId", request.workspaceId())
                 .put("tenantId", request.tenantId())
+                .put("sessionId", request.sessionId())
                 .build();
 
         ExecutionHandle handle = new ExecutionHandle(
@@ -138,9 +142,8 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                         ContextPropagationOperator.storeOpenTelemetryContext(
                                 reactorCtx, io.opentelemetry.context.Context.current().with(trace.span())))
                 .doOnNext(event -> {
-                    AgentEventEnvelope envelope = mapEvent(handle, event);
-                    handle.eventStreams.emit(envelope);
-                    // 终态由真实事件驱动（P1-5）：检测中断恢复消息。
+                    // P1-1：先完成幂等终态状态转换，再发布终态事件——
+                    // SSE 终态回调内 Task 状态必须已一致。
                     if (event instanceof AgentResultEvent result) {
                         Msg msg = result.getResult();
                         if (msg != null && msg.getGenerateReason() == GenerateReason.INTERRUPTED) {
@@ -151,19 +154,20 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                                     AgentExecutionReference.ExecutionStatus.COMPLETED);
                         }
                     }
+                    AgentEventEnvelope envelope = mapEvent(handle, event);
+                    handle.eventStreams.emit(envelope);
                 })
                 .doOnComplete(() -> {
-                    handle.eventStreams.complete();
-                    // P1-元数据误判修正：流结束兜底时区分取消与正常完成。
+                    // P1-1：先更新兜底状态，再关闭事件流。
                     // CANCEL_REQUESTED 未收到中断异常/恢复消息即结束 → CANCELLED（非 COMPLETED）。
                     if (handle.status == AgentExecutionReference.ExecutionStatus.CANCEL_REQUESTED) {
                         transitionTerminal(handle,
                                 AgentExecutionReference.ExecutionStatus.CANCELLED);
                     } else if (handle.status == AgentExecutionReference.ExecutionStatus.STARTED) {
-                        // 正常流结束且未收到结果事件：视为完成（流内无结果事件时兜底）。
                         transitionTerminal(handle,
                                 AgentExecutionReference.ExecutionStatus.COMPLETED);
                     }
+                    handle.eventStreams.complete();
                     log.info("Task {} 事件流结束（taskAttemptId={}, agentId={}）",
                             request.taskId(), taskAttemptId, agentId);
                 })
@@ -212,8 +216,11 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         RuntimeContext ctx = handle.runtimeContext;
         if (ctx == null) {
             ctx = RuntimeContext.builder()
-                    .sessionId(handle.request.sessionId())
+                    .sessionId(namespacedSessionId(handle.request.workspaceId(),
+                            handle.request.tenantId(), handle.request.sessionId()))
                     .userId(handle.request.userId())
+                    .put("workspaceId", handle.request.workspaceId())
+                    .put("tenantId", handle.request.tenantId())
                     .build();
         }
         handle.agent.getDelegate().interrupt(ctx);
@@ -228,30 +235,13 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                     "resumeExecution 需要官方 AgentStateStore；当前 Adapter 未配置 State Store");
         }
 
-        // P0-3：resume 前同样经 SecretResolver 解析并重新注册模型
-        // （模拟 ModelRegistry 重新初始化后不依赖静态注册残留，P1-6）。
-        String apiKey = secretResolver.resolve(config.apiKeyReference());
-        ModelAssembler.registerOpenAiCompatibleModel(config.modelId(), config.baseUrl(), apiKey);
-
-        // 同 (userId, sessionId) + 同 store 重建 Agent，恢复持久化会话上下文（官方语义）。
-        HarnessAgent resumed = buildSecureAgent();
-        String newAgentId = resumed.getAgentId();
-        String newTaskAttemptId = TaskAttemptId.newUuidV7();
-
-        // P0-1/P0-2：resume 从 State Store 按 Task 隔离键恢复 workspaceId/tenantId；
-        // 恢复不到上下文、Workspace 或 Tenant 时 fail-closed（抛异常），
-        // 不得用空字符串继续执行。
-        ExecutionContextState restored = null;
-        if (stateStore != null) {
-            restored = stateStore.get(reference.userId(), reference.sessionId(),
-                            ExecutionContextState.storeKey(reference.taskId()),
-                            ExecutionContextState.class)
-                    .orElse(null);
-        }
-        if (restored == null) {
-            throw new IllegalStateException(
-                    "Task " + reference.taskId() + " 恢复失败：State Store 中无执行上下文（fail-closed）");
-        }
+        // P1-2：先读取并完整校验持久化上下文（taskId/userId/sessionId/workspaceId/tenantId），
+        // 再解析 Secret/注册模型/创建 Agent——失败路径不遗留未关闭 Agent。
+        ExecutionContextState restored = stateStore.get(reference.userId(), reference.sessionId(),
+                        ExecutionContextState.storeKey(reference.taskId()),
+                        ExecutionContextState.class)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Task " + reference.taskId() + " 恢复失败：State Store 中无执行上下文（fail-closed）"));
         if (restored.getWorkspaceId() == null || restored.getWorkspaceId().isBlank()) {
             throw new IllegalStateException(
                     "Task " + reference.taskId() + " 恢复失败：执行上下文缺少 workspaceId（fail-closed）");
@@ -260,18 +250,34 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
             throw new IllegalStateException(
                     "Task " + reference.taskId() + " 恢复失败：执行上下文缺少 tenantId（fail-closed）");
         }
+        if (reference.taskId() == null || reference.taskId().isBlank()
+                || reference.userId() == null || reference.userId().isBlank()
+                || reference.sessionId() == null || reference.sessionId().isBlank()) {
+            throw new IllegalStateException(
+                    "resume 失败：引用缺少 taskId/userId/sessionId（fail-closed）");
+        }
         String workspaceId = restored.getWorkspaceId();
         String tenantId = restored.getTenantId();
+
+        // P1-2：校验通过后才解析 Secret、注册模型、创建 Agent（失败无遗留）。
+        String apiKey = secretResolver.resolve(config.apiKeyReference());
+        ModelAssembler.registerOpenAiCompatibleModel(config.modelId(), config.baseUrl(), apiKey);
+        HarnessAgent resumed = buildSecureAgent();
+        String newAgentId = resumed.getAgentId();
+        String newTaskAttemptId = TaskAttemptId.newUuidV7();
+
         // 业务 Task 标识沿用原引用的 taskId（贯穿全部 Attempt）；上下文由 Store 恢复。
         AgentExecutionRequest resumedRequest = new AgentExecutionRequest(
                 reference.taskId(), reference.userId(), reference.sessionId(),
                 workspaceId, tenantId, List.of("继续之前的会话"));
         EventStreams<AgentEventEnvelope> eventStreams = EventStreams.replayBounded();
+        // P0-2：resume 的 sessionId 同样使用复合命名空间（按恢复的 Workspace 隔离）。
         RuntimeContext ctx = RuntimeContext.builder()
-                .sessionId(reference.sessionId())
+                .sessionId(namespacedSessionId(workspaceId, tenantId, reference.sessionId()))
                 .userId(reference.userId())
                 .put("workspaceId", workspaceId)
                 .put("tenantId", tenantId)
+                .put("sessionId", reference.sessionId())
                 .build();
         ExecutionHandle handle = new ExecutionHandle(
                 resumedRequest, resumed, newTaskAttemptId, newAgentId, eventStreams, ctx);
@@ -286,8 +292,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                         ContextPropagationOperator.storeOpenTelemetryContext(
                                 reactorCtx, io.opentelemetry.context.Context.current().with(trace.span())))
                 .doOnNext(event -> {
-                    AgentEventEnvelope envelope = mapEvent(handle, event);
-                    handle.eventStreams.emit(envelope);
+                    // P1-1：先完成终态状态转换，再发布终态事件（与 startExecution 一致）。
                     if (event instanceof AgentResultEvent result) {
                         Msg msg = result.getResult();
                         if (msg != null && msg.getGenerateReason() == GenerateReason.INTERRUPTED) {
@@ -298,10 +303,11 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                                     AgentExecutionReference.ExecutionStatus.COMPLETED);
                         }
                     }
+                    AgentEventEnvelope envelope = mapEvent(handle, event);
+                    handle.eventStreams.emit(envelope);
                 })
                 .doOnComplete(() -> {
-                    handle.eventStreams.complete();
-                    // P1-元数据误判修正：与 startExecution 一致——取消请求未收到中断确认即结束 → CANCELLED。
+                    // P1-1：先更新兜底状态，再关闭事件流。
                     if (handle.status == AgentExecutionReference.ExecutionStatus.CANCEL_REQUESTED) {
                         transitionTerminal(handle,
                                 AgentExecutionReference.ExecutionStatus.CANCELLED);
@@ -309,6 +315,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                         transitionTerminal(handle,
                                 AgentExecutionReference.ExecutionStatus.COMPLETED);
                     }
+                    handle.eventStreams.complete();
                 })
                 .doOnError(error -> {
                     if (isInterrupt(error)) {
@@ -368,6 +375,20 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                 // 工具面仅为显式白名单（toolkit 中注册的工具）。
                 .disableMemoryTools()
                 .build();
+    }
+
+    /**
+     * 生成 AgentScope 会话的复合命名空间（P0-2）。
+     *
+     * <p>AgentScope AgentState/Memory 按 (userId, sessionId) 键控；为隔离跨 Workspace
+     * 相同 user/session 的会话状态，sessionId 前缀注入 workspaceId:tenantId。
+     * 原始业务 sessionId 保存在 RuntimeContext extras（getExtra("sessionId")）。
+     */
+    private static String namespacedSessionId(String workspaceId, String tenantId, String sessionId) {
+        String ws = workspaceId == null ? "" : workspaceId;
+        String tn = tenantId == null ? "" : tenantId;
+        String ss = sessionId == null ? "" : sessionId;
+        return ws + ":" + tn + ":" + ss;
     }
 
     /**

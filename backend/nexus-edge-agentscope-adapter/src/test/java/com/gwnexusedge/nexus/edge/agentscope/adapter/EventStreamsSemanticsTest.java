@@ -140,7 +140,7 @@ class EventStreamsSemanticsTest {
     }
 
     @Test
-    @DisplayName("P0-8：有限 request(n) 背压——订阅者只收到 n 个，按需补充请求")
+    @DisplayName("P0-8/P1-3：request(2) 背压——主线程独立断言只收 2 条，再追加 request 收齐")
     void backpressureWithLimitedRequest() throws Exception {
         EventStreams<AgentEventEnvelope> stream = EventStreams.replayBounded();
         for (int i = 1; i <= 5; i++) {
@@ -148,25 +148,23 @@ class EventStreamsSemanticsTest {
         }
         stream.complete();
 
-        // 订阅者只 request(2)：应恰好收到 2 个（背压生效，不一次性全推）。
+        // 订阅者只 request(2)，由主线程独立断言收到 2 条后再追加请求
+        // （P1-3：不在 onNext 回调内立即追加请求）。
         List<AgentEventEnvelope> events = new ArrayList<>();
+        AtomicReference<Flow.Subscription> subscriptionRef = new AtomicReference<>();
+        CountDownLatch firstBatch = new CountDownLatch(2);
         CountDownLatch done = new CountDownLatch(1);
         stream.asFlowPublisher().subscribe(new Flow.Subscriber<>() {
-            private Flow.Subscription subscription;
-
             @Override
             public void onSubscribe(Flow.Subscription subscription) {
-                this.subscription = subscription;
+                subscriptionRef.set(subscription);
                 subscription.request(2); // 有限背压：只请求 2 个
             }
 
             @Override
             public void onNext(AgentEventEnvelope item) {
                 events.add(item);
-                if (events.size() == 2) {
-                    // 补请求剩余，验证按需拉取。
-                    subscription.request(10);
-                }
+                firstBatch.countDown();
             }
 
             @Override
@@ -180,11 +178,17 @@ class EventStreamsSemanticsTest {
             }
         });
 
-        assertTrue(done.await(5, TimeUnit.SECONDS), "背压订阅应完成");
-        // 首次 request(2) 后应只收到 2 个，补请求后收到全部 5 个。
-        assertEquals(5, events.size(), "背压补请求后应收到全部事件");
-        // 顺序仍一致。
+        // 主线程独立等待并断言：第一次 request(2) 后恰好 2 条。
+        assertTrue(firstBatch.await(5, TimeUnit.SECONDS), "首次 request(2) 应收到 2 条");
+        assertEquals(2, events.size(), "request(2) 后应恰好收到 2 条（背压生效）");
         assertEquals("e1", events.get(0).summary());
+        assertEquals("e2", events.get(1).summary());
+
+        // 主线程追加请求，验证剩余事件按需拉取。
+        subscriptionRef.get().request(10);
+        assertTrue(done.await(5, TimeUnit.SECONDS), "补请求后应完成");
+        assertEquals(5, events.size(), "追加 request 后应收到全部 5 个事件");
+        assertEquals("e3", events.get(2).summary());
         assertEquals("e5", events.get(4).summary());
     }
 
