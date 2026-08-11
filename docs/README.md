@@ -81,8 +81,8 @@ V1 客户端只交付 Web Workspace，两条 P0 的全部业务、管理、审�
 
 1. 试点企业尚未提供脱敏真实数据集、正式 Word/PPT/Excel 模板和 Golden Result。
 2. WPS Office 免费版尚未完成无人值守 Renderer Compatibility Test。
-3. Spring Boot 4.1.0、AgentScope 2.0.1、MyBatis-Plus、Sa-Token 等尚未完成组合兼容验证。
-4. 当前仓库尚无实现代码、CI、部署包或企业环境测试结果。
+3. 核心依赖组合（Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1）已通过 G-01（41/41 真实兼容测试）；MyBatis-Plus、Sa-Token 等外围依赖组合兼容验证（G-02）尚未完成。
+4. 仓库已有 DEV-0001 兼容性实现与 41 个真实 AgentScope 集成测试（G-01 通过）；尚无 CI、部署包或企业环境测试结果。
 5. 试点企业尚未提供Coding Workspace所需的两个脱敏真实Repository、真实改造任务、验收条件和非生产Secret。
 6. Rootless Docker+gVisor、Rootless BuildKit、Harbor、Traefik、Envoy Egress及Host Agent尚未完成组合兼容与安全红队验证。
 7. GitHub App与通用Git Provider、Node 22/24静态/SSR Build Contract、自定义域名/ACME尚无E2E证据。

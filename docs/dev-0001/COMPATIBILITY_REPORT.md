@@ -2,9 +2,10 @@
 
 > 状态：PARTIALLY_VERIFIED（G-01 通过；G-03/OQ-007 为 PARTIAL；模型 Provider 生产认证未验证）
 > 日期：2026-08-10（首次）；2026-08-10~11（七轮 CHANGES_REQUESTED 修订）
+> 批准：ADR-0006 于 2026-08-11 经产品架构负责人批准（Accepted）；DEV-0001 技术实现核准，进入收口
 > 分支：`agent/DEV-0001-agentscope-compatibility`
-> 关联门禁：G-01（核心依赖兼容 PoC，**通过**）、G-03（AgentScope 能力盘点，**PARTIAL**）
-> 关联 Open Question：OQ-007（Persistence/Recovery 边界，**PARTIAL**）
+> 关联门禁：G-01（核心依赖兼容 PoC，**通过**，17_IMPLEMENTATION_READINESS_CHECKLIST.md 已标记 PASS）、G-03（AgentScope 能力盘点，**PARTIAL**）
+> 关联 Open Question：OQ-007（Persistence/Recovery 边界，**PARTIAL / BLOCKED_BY_POC**）
 
 ---
 

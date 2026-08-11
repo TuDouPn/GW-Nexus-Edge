@@ -1,8 +1,14 @@
 # ADR-0006 — 采用 AgentScope 2.0.1 官方 BOM 并内嵌 Harness/Core（第七轮评审修订版）
 
-> 状态：**Proposed（草案，待产品架构负责人批准）**
-> 日期：2026-08-10（首次）；2026-08-11（第七轮修订）
-> 决策人：（待产品架构负责人）
+> 状态：**Accepted（2026-08-11 经产品架构负责人批准）**
+> 日期：2026-08-10（首次）；2026-08-11（第七轮修订）；2026-08-11（批准）
+> 决策人：产品架构负责人（2026-08-11 批准）
+> 批准范围：AgentScope 2.0.1 官方 BOM + Spring Boot 4.1.0 内嵌 Harness/Core；DEV-0001
+> 技术实现与 41 个真实兼容测试；长期 Runtime Identity（scopedUserId/scopedSessionId）；
+> Memory Hooks 边界（业务 Agent 禁用自动长期记忆）；FAILED 业务事件与 Nexus 生成事件 ID；
+> 四标识模型（taskId/taskAttemptId/agentId/traceId）；executionId/agentId 语义（AgentScope
+> 2.0.1 无独立 Execution ID）。本 ADR 批准后按 P0-9 原子同步 00_DECISIONS、08_AGENTSCOPE_AND_SKILL、
+> 16_GLOSSARY、领域字段与 API 契约。
 > 关联决策/Issue：DEV-0001、G-01、G-03、OQ-007
 > 关联 ADR：ADR-0001、ADR-0002、ADR-0004
 

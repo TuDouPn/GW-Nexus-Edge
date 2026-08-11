@@ -21,9 +21,9 @@
 
 | ID | 检查项 | 通过标准 | 当前状态 |
 |---|---|---|---|
-| G-01 | 核心依赖兼容 PoC | Java 21、Spring Boot 4.1.0、AgentScope 2.0.1 可共同构建和运行 | Blocked：待验证 |
+| G-01 | 核心依赖兼容 PoC | Java 21、Spring Boot 4.1.0、AgentScope 2.0.1 可共同构建和运行 | **PASS**（2026-08-11，DEV-0001：41/41 真实兼容测试，`./mvnw clean verify`） |
 | G-02 | 外围依赖冻结 | MyBatis-Plus、Sa-Token、JDBC、Redis、Flyway 版本有兼容报告和 ADR | Blocked：待验证 |
-| G-03 | AgentScope 能力盘点 | Harness/Core、Provider、Persistence、Recovery、Observability 的实际 API 与边界形成适配清单 | Blocked：待验证 |
+| G-03 | AgentScope 能力盘点 | Harness/Core、Provider、Persistence、Recovery、Observability 的实际 API 与边界形成适配清单 | PARTIAL（DEV-0001：能力清单已验证大部分；真实 Provider/Redis 待补，BLOCKED_BY_POC） |
 | G-04 | WPS Renderer 门禁 | 免费版的授权、自动化接口、无人值守、模板保真、稳定性和恢复测试通过 | Blocked：待验证 |
 | G-05 | Skill 验收材料 | 脱敏真实数据、三类正式模板、人工认可 Golden Result 全部到位 | Blocked：待试点企业提供 |
 | G-06 | 私有 GitHub CI | 分支保护和完整 Actions 质量门禁已启用 | Pending |
@@ -36,7 +36,7 @@
 | G-13 | V1 Web Product Gate | 两条P0均可仅通过Web完成；Web E2E、响应式、无障碍、权限、SSE恢复、组件治理和覆盖率全部通过 | Pending |
 | G-14 | assistant-ui Agent交互PoC | React 19/Vite/Tailwind/shadcn组合、精确版本、`@gwnexus/assistant-ui`、Custom Runtime对Nexus REST/SSE/Last-Event-ID、Tool UI安全、zh-CN、a11y、许可与升级矩阵全部通过 | Blocked：待验证 |
 
-G-01 至 G-03 未完成前，只允许建立仓库骨架、契约、测试基建和兼容 PoC，不允许大规模业务编码。G-04 未通过前可以实现 Renderer SPI、队列和测试夹具，但不得宣称自动 Office Artifact 达到生产级。G-05 未完成前不得宣称经营分析 Skill 已通过生产验收。G-08 未完成前不得宣称真实企业Coding项目生产就绪；G-09至G-12未通过前不得开放Production Application发布。G-14 未通过前只允许构建 `@gwnexus/assistant-ui` PoC 和契约测试，不得在业务页面散落接入上游或自研临时聊天组件。Desktop属于V1.1，任何V1 Work Item、CI或发布包均不得实现、构建或交付Desktop。
+G-01 已通过（DEV-0001）。G-02 与 G-03 完成前，只允许建立仓库骨架、契约、测试基建和兼容 PoC，不允许大规模业务编码。G-04 未通过前可以实现 Renderer SPI、队列和测试夹具，但不得宣称自动 Office Artifact 达到生产级。G-05 未完成前不得宣称经营分析 Skill 已通过生产验收。G-08 未完成前不得宣称真实企业Coding项目生产就绪；G-09至G-12未通过前不得开放Production Application发布。G-14 未通过前只允许构建 `@gwnexus/assistant-ui` PoC 和契约测试，不得在业务页面散落接入上游或自研临时聊天组件。Desktop属于V1.1，任何V1 Work Item、CI或发布包均不得实现、构建或交付Desktop。
 
 ## 3. 单模块开工记录
 

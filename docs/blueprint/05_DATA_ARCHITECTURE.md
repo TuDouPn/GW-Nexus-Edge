@@ -149,7 +149,7 @@ V1.1 Desktop 计划新增 `gw_sync_source`、`gw_sync_cursor` 等本地同步实
 - `gw_resource`：`(workspace_id, logical_path)` 唯一；Windows 路径需规范化大小写和分隔符。
 - `gw_resource_version`：`(resource_id, version_no)` 唯一；`content_hash` 索引用于去重但不得跨 Tenant 泄露存在性。
 - `gw_task`：`idempotency_key` 在 Tenant/调用者/用例范围唯一；status/created_at 建索引。
-- `gw_task_attempt`：`(task_id, attempt_no)` 唯一；AgentScope Execution ID 唯一且可空到启动成功。
+- `gw_task_attempt`：`(task_id, attempt_no)` 唯一；`task_attempt_id`（UUIDv7）为业务主键；`agent_id`（AgentScope Agent 实例标识）唯一且可空到启动成功；另保存 `trace_id`（OTel）。AgentScope 2.0.1 无独立 Execution ID，不设该字段。
 - `gw_artifact_version`：`(artifact_id, version_no)` 唯一；storage_key 不可复用。
 - `gw_approval`：同一 ArtifactVersion、stage 只能有一个活动请求。
 - `gw_outbox_event`：status、next_attempt_at、created_at 组合索引；event_id 全局唯一。

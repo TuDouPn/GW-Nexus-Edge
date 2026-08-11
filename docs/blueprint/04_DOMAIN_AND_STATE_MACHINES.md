@@ -17,7 +17,7 @@ Tenant
      │   └─ DocumentChunk
      ├─ SkillBinding
      ├─ Task
-     │   └─ TaskAttempt → AgentScope Execution
+     │   └─ TaskAttempt → AgentScope Agent（agentId）
      └─ Artifact
          ├─ ArtifactVersion
          ├─ EvidenceLink
@@ -25,7 +25,7 @@ Tenant
      └─ CodingProject
          ├─ RepositoryBinding / BuildContractVersion / CodeIndexGeneration
          ├─ CodingPlan / CodingPlanVersion
-         ├─ CodingTask → TaskAttempt → AgentScope Execution → Sandbox
+         ├─ CodingTask → TaskAttempt → AgentScope Agent（agentId）→ Sandbox
          ├─ ChangeSet / ChangeSetVersion
          ├─ ReleaseCandidate / SecurityFinding / SupplyChainAttestation
          ├─ Deployment / DeploymentAttempt
@@ -87,7 +87,7 @@ RUNNING/WAITING_RENDER/RETRY_WAIT → FAILED
 |---|---|
 | CREATED | Task 及输入已验证并持久化 |
 | QUEUED | 等待 AgentScope 启动或重新尝试 |
-| RUNNING | 已关联 AgentScope Execution |
+| RUNNING | 已关联 AgentScope Agent 实例（agentId） |
 | WAITING_RENDER | Agent 已产生 Artifact Model，等待正式 Renderer |
 | COMPLETED | Task 执行与必要渲染结束；审核由 Artifact 状态表达 |
 | RETRY_WAIT | 可恢复失败，等待退避重试 |
@@ -95,7 +95,7 @@ RUNNING/WAITING_RENDER/RETRY_WAIT → FAILED
 | CANCELLED | 取消完成，不再推进 |
 | FAILED | 达到重试上限或不可恢复失败 |
 
-Task 不包含 `READY_FOR_REVIEW`。Task 状态不是 AgentScope Execution 状态副本。
+Task 不包含 `READY_FOR_REVIEW`。Task 状态不是 AgentScope Agent 执行状态副本（AgentScope 2.0.1 无独立 Execution ID，见 16 术语表）。
 
 ## 4. Artifact 状态机
 

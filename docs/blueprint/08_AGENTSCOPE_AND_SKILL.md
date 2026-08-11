@@ -14,22 +14,30 @@
 
 领域层只认识以下业务能力语义，不暴露 AgentScope 类型：
 
-- `startExecution(AuthorizedExecutionRequest)`
-- `cancelExecution(ExecutionReference)`
-- `resumeExecution(ExecutionReference, ResumeReason)`
-- `streamExecutionEvents(ExecutionReference)`
+- `startExecution(AgentExecutionRequest)`
+- `cancelExecution(AgentExecutionReference)`
+- `resumeExecution(AgentExecutionReference, ResumeReason)`
+- `streamExecutionEvents(AgentExecutionReference)`（返回 JDK `Flow.Publisher`，执行前建立，不发起第二次执行）
 
 Adapter 实现负责：
 
 1. 解析 Published SkillVersion 与 Agent Definition。
-2. 构造 AgentScope RuntimeContext，注入 tenant/user/workspace/task/session。
+2. 构造 AgentScope RuntimeContext：业务 Tenant/Workspace/User/Session 经 Runtime Identity
+   映射为 AgentScope `scopedUserId`/`scopedSessionId`（稳定、无碰撞、路径安全），
+   原始业务标识（workspaceId/tenantId/sessionId）保留在 RuntimeContext extras。
 3. 注入经过 Policy 决策的 Knowledge、Tool 和 Model 配置。
 4. 创建 Business Analyst Agent 与 Review Agent。
-5. 订阅 AgentScope typed events，映射业务安全事件。
-6. 保存 Execution ID 与 TaskAttempt 关联。
+5. 订阅 AgentScope typed events，映射业务安全事件（终态事件先完成状态转移再发布）。
+6. 维护四标识映射：taskId / taskAttemptId（UUIDv7）/ agentId（AgentScope Agent 实例标识）/
+   traceId（OTel）；AgentScope 2.0.1 无独立 Execution ID，禁止称 agentId 为"官方 Execution ID"。
 7. 将结构化结果交给 Artifact 服务。
 
 不得自行实现 ReAct 循环、Tool Dispatcher、SubAgent Message Bus、Memory Compaction、Checkpoint 或模型 HTTP 客户端。
+
+**自动长期记忆边界（ADR-0006）**：业务 Agent 不允许自动长期记忆——`disableMemoryTools`
+只移除记忆工具，Memory Flush/Consolidation Hooks 仍会按 userId 写入共享
+`memory/YYYY-MM-DD.md` 台账（跨 Workspace 共享），必须同时 `disableMemoryHooks()`。
+引入自动长期记忆需独立 ADR + Runtime Identity 评审，禁止用临时方案掩盖。
 
 ## 3. Model Governance
 

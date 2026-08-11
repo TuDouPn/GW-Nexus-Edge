@@ -29,7 +29,7 @@
 | A-001 | AgentScope Java 2.0.1 是唯一 Agent Runtime。 |
 | A-002 | 采用 Spring Boot 内嵌 AgentScope Harness/Core，不部署独立 AgentScope Service 或 Runtime Control Plane。 |
 | A-003 | 不自研 Agent 执行循环、Workflow Engine、Memory Runtime、Tool Framework、Agent 状态机或模型调用协议层。 |
-| A-004 | Nexus Edge 仅维护业务 Task 状态与 AgentScope Execution ID 映射。 |
+| A-004 | Nexus Edge 维护四标识模型：taskId（业务 Task）/ taskAttemptId（Nexus 业务主键，UUIDv7）/ agentId（AgentScope Agent 实例标识，构建时 UUID）/ traceId（OTel）。AgentScope 2.0.1 无独立 Execution ID 概念，禁止称 agentId 为"官方 Execution ID"；事件 eventId 由 Nexus 生成（UUIDv7）。 |
 | A-005 | Model Gateway 是治理层，模型协议适配优先使用 AgentScope 官方 Provider。 |
 | A-006 | 经营分析采用 Business Analyst 主 Agent、专业 Tool、AgentScope Workflow 和独立 Review Agent；不为展示效果强拆多个 Agent。 |
 

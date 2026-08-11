@@ -204,6 +204,9 @@ event: task.progress
 data: {"schemaVersion":"1.0","taskId":"...","executionId":"...","occurredAt":"...","payload":{...}}
 ```
 
+事件 `id`（SSE `Last-Event-ID` 游标）由 Nexus 生成（UUIDv7，见 §6 `eventId`），
+不依赖上游 Agent 事件 id；`executionId` 承载 AgentScope Agent 实例标识（agentId，ADR-0006）。
+
 P0 事件类型：
 
 - `task.created`
