@@ -52,7 +52,13 @@ public final class TraceSupport {
         return new TraceHandle(span, traceId, reactorCtx);
     }
 
-    /** 结束 span（幂等；重复调用安全）。 */
+    /**
+     * 结束 span（幂等，第四轮）。
+     *
+     * <p>由调用方在 {@code doFinally} 中调用一次；OTel SDK 保证
+     * {@link Span#end()} 幂等（重复调用安全），因此 complete/error/cancel/dispose
+     * 任意路径触发 doFinally 都只结束一次 span，不会提前/延迟结束。
+     */
     public static void end(TraceHandle handle) {
         if (handle != null) {
             handle.span.end();

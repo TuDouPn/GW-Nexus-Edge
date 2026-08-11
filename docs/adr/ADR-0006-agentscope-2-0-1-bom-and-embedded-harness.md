@@ -43,6 +43,11 @@ DEV-0001 验证 Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 组合（G-01）�
     区分值；解析值经请求头可验证。
 14. **执行级标识（第三轮 P1）**：`AgentEventEnvelope.executionId` 承载 Agent 实例标识；
     事件携带执行级 replyId；终态判定区分取消与完成（无元数据误判）。
+15. **executionId 与 agentId 语义边界（第四轮，同步 Blueprint 16 术语表）**：
+    AgentScope 2.0.1 **无独立 Execution ID 概念**。`AgentEventEnvelope.executionId`
+    字段承载 **AgentScope AgentId**（实例标识，构建时 UUID）；执行级细粒度标识为
+    事件 `replyId`；Nexus 侧业务主键为 `TaskAttemptId`（UUIDv7）。三者语义独立，
+    禁止互称。本决策同步修订 `docs/blueprint/16_GLOSSARY.md`（术语表 + 禁止混用）。
 
 ## 长期适配性
 

@@ -60,6 +60,17 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+            <exclusions>
+                <!--
+                  第四轮：排除 android-json（jsonassert 的重复 JSONObject 来源）。
+                  Spring Boot DuplicateJsonObjectContextCustomizer 警告两个 org.json.JSONObject；
+                  jsonassert 可运行时使用 classpath 中唯一剩余的 org.json（json-20251224）。
+                -->
+                <exclusion>
+                    <groupId>com.vaadin.external.google</groupId>
+                    <artifactId>android-json</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -70,6 +81,7 @@
           OpenTelemetry SDK（test scope）：DEV-0001 验证真实 Trace ID 采集。
           AgentScope core 已传递 opentelemetry-api 1.61.0 与 reactor-3.1 桥接；
           测试注入 SDK 使 GlobalOpenTelemetry 产生真实 span，从而采集真实 traceId。
+          sdk-testing 提供 InMemorySpanExporter（第四轮：父子 span 关联验证）。
         -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
@@ -79,6 +91,11 @@
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-trace</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-testing</artifactId>
             <scope>test</scope>
         </dependency>
         <!-- Testcontainers 用于可选的 Redis 恢复测试（仅在能力矩阵支持时启用）；版本统一管理。 -->

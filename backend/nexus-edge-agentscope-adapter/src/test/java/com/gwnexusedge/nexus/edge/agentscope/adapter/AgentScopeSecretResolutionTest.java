@@ -69,10 +69,10 @@ class AgentScopeSecretResolutionTest {
 
             // 3) Authorization 应包含 resolver 解析出的值（Bearer <resolved>）。
             //    解析值 = TEST_API_KEY + ":" + hex(reference)，随 reference 变化。
+            //    断言消息不含 Secret 明文（第四轮：不泄露解析值）。
             String expectedResolved = resolver.resolve(config.apiKeyReference());
             assertTrue(auth.contains(expectedResolved),
-                    "Authorization 头应包含 SecretResolver 解析出的值；头=" + auth
-                            + "，期望含=" + expectedResolved);
+                    "Authorization 头应包含 SecretResolver 解析出的值（断言消息不输出 Secret 明文）");
         }
     }
 

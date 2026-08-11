@@ -32,6 +32,7 @@ public final class CompatEndpoint implements AutoCloseable {
     private final AtomicBoolean structuredReply = new AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicLong artificialDelayMillis = new java.util.concurrent.atomic.AtomicLong(0);
     private final java.util.concurrent.atomic.AtomicInteger toolCallRounds = new java.util.concurrent.atomic.AtomicInteger(0);
+    private final AtomicReference<String> toolCallName = new AtomicReference<>("echo_text");
 
     /**
      * 启动测试端点。
@@ -66,6 +67,11 @@ public final class CompatEndpoint implements AutoCloseable {
     /** 设置每个请求的人工延迟（毫秒），用于验证取消运行中任务。 */
     public void setArtificialDelayMillis(long millis) {
         artificialDelayMillis.set(millis);
+    }
+
+    /** 设置 tool_call 返回的工具名（默认 echo_text；可改为任意已注册白名单工具）。 */
+    public void setToolCallName(String name) {
+        toolCallName.set(name);
     }
 
     public String lastRequestBody() {
@@ -195,13 +201,15 @@ public final class CompatEndpoint implements AutoCloseable {
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
         exchange.sendResponseHeaders(200, 0);
         try (OutputStream out = exchange.getResponseBody()) {
+            String toolName = toolCallName.get();
             String[] chunks = {
                 "data: {\"id\":\"chatcmpl-test-tool\",\"object\":\"chat.completion.chunk\","
                     + "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null},"
                     + "\"finish_reason\":null}]}\n\n",
                 "data: {\"id\":\"chatcmpl-test-tool\",\"object\":\"chat.completion.chunk\","
                     + "\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_test_0001\","
-                    + "\"type\":\"function\",\"function\":{\"name\":\"echo_text\",\"arguments\":\"{\\\"text\\\":\\\"来自工具的测试参数\\\"}\"}}]},"
+                    + "\"type\":\"function\",\"function\":{\"name\":\"" + toolName
+                    + "\",\"arguments\":\"{}\"}}]},"
                     + "\"finish_reason\":null}]}\n\n",
                 "data: {\"id\":\"chatcmpl-test-tool\",\"object\":\"chat.completion.chunk\","
                     + "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
@@ -215,6 +223,7 @@ public final class CompatEndpoint implements AutoCloseable {
     }
 
     private String toolCallResponseBody() {
+        String toolName = toolCallName.get();
         return """
                 {
                   "id": "chatcmpl-test-tool",
@@ -230,8 +239,8 @@ public final class CompatEndpoint implements AutoCloseable {
                         "id": "call_test_0001",
                         "type": "function",
                         "function": {
-                          "name": "echo_text",
-                          "arguments": "{\\"text\\":\\"来自工具的测试参数\\"}"
+                          "name": "%s",
+                          "arguments": "{}"
                         }
                       }]
                     },
@@ -239,7 +248,7 @@ public final class CompatEndpoint implements AutoCloseable {
                   }],
                   "usage": {"prompt_tokens": 12, "completion_tokens": 10, "total_tokens": 22}
                 }
-                """;
+                """.formatted(toolName);
     }
 
     private String nonStreamResponseBody() {
