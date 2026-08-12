@@ -171,8 +171,9 @@
           DM8 兼容验证 Profile（DEV-0002 §10 / 评审 P1）：
           - 显式启用：./mvnw -P dm8-compat -pl nexus-edge-compatibility-test test
           - 提供 DM8 官方驱动（Maven Central 可解析坐标）并运行 Dm8CompatibilityTest；
-          - 该测试：① 验证驱动类可解析（无需服务器）；② 读取 dm8.url/dm8.username/dm8.password
-            （或 DM8_URL/DM8_USERNAME/DM8_PASSWORD）——缺失则 fail-closed（测试失败）；
+          - 该测试：① 验证驱动类可解析（无需服务器）；② 读取 dm8.url/dm8.username（系统属性或
+            环境变量）与密码（仅 DM8_PASSWORD 环境 Secret 或 DM8_PASSWORD_FILE 受限 Secret 文件，
+            禁 -Ddm8.password）——缺失则 fail-closed（测试失败）；
           - 当前无 DM8 授权环境：Profile 仅验证驱动解析，不声称可运行同等级 MP/JD/FW 用例
             （G-02 保持 PARTIAL；MP-6/FW-7 DM8 部分未验证，见 COMPATIBILITY_REPORT.md）。
         -->

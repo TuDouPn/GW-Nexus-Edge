@@ -114,7 +114,8 @@
   ② `-P dm8-compat` 显式启用时，驱动类 `dm.jdbc.driver.DmDriver` 可解析（Class.forName 通过）。
 - **未验证**：DM8 服务器连接/事务/迁移（无官方 DM8 服务器镜像、无授权实例、本地无安装）。
 - **fail-closed 证据（P1-7）**：`./mvnw -P dm8-compat -pl nexus-edge-compatibility-test test` 且未提供
-  `dm8.url/dm8.username/dm8.password`（或 `DM8_URL/DM8_USERNAME/DM8_PASSWORD`）→
+  `dm8.url/dm8.username`（或 `DM8_URL/DM8_USERNAME`）与密码（仅 `DM8_PASSWORD` 环境 Secret 或
+  `DM8_PASSWORD_FILE` 受限 Secret 文件，禁 `-Ddm8.password`）→
   `Dm8CompatibilityTest` **失败**（`fail-closed，禁止静默跳过或假通过`），不静默跳过。
 - **能力边界声明（P1-8）**：当前 dm8-compat Profile **仅验证驱动解析 + fail-closed 检查**；
   **不声称可运行与 MySQL/PostgreSQL 同等级的 MP-6/FW-7/JD 用例**；G-02 保持 PARTIAL。

@@ -39,9 +39,9 @@
           DEV-0002（G-02 外围依赖冻结）：
           - MyBatis-Plus / Sa-Token 使用官方 Spring Boot 4 Starter（Maven Central 核验，2026-08-11）。
           - MySQL/PostgreSQL/Redis/Flyway 由 Spring Boot 4.1.0 BOM 管理，不另定版本。
-          - Testcontainers：版本统一由单一来源管理（评审 P0-1）——不再引入独立 testcontainers-bom，
-            不再写单个组件版本；由 Spring Boot 4.1.0 父 POM（spring-boot-dependencies 的
-            testcontainers-bom import）验证管理，见 COMPATIBILITY_REPORT.md §3。
+          - Testcontainers：版本统一由单一来源管理（评审 P0-1）——根 pom 仅 import
+            testcontainers-bom:2.0.5（与 SB 4.1.0 BOM 的 testcontainers.version 一致），
+            子模块只声明坐标、不写版本（见 dependencyManagement 注释与 COMPATIBILITY_REPORT.md §3）。
         -->
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <sa-token.version>1.45.0</sa-token.version>
