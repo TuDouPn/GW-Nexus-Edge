@@ -130,81 +130,99 @@ class RecoveryCapabilityEvidenceTest {
     }
 
     @Test
-    @DisplayName("CP-5：LocalSandboxSnapshot persist/restore 往返（真实临时目录，tar 字节 + Hash 一致）")
+    @DisplayName("CP-5：LocalSandboxSnapshot payload 持久化往返（官方存储原语；非完整 Sandbox 工作区跨 call 自动恢复）")
     void localSandboxSnapshotRoundTrip() throws Exception {
         Path base = Files.createTempDirectory("cp5-snapshot");
         SandboxSnapshotSpec spec = new LocalSnapshotSpec(base);
         SandboxSnapshot snap = spec.build("snap-cp5");
 
-        // 构造工作区归档（tar 字节流；官方 LocalSandboxSnapshot 原子写 {basePath}/{id}.tar）。
-        byte[] archive = ("CP5-ARCHIVE-" + System.nanoTime()).getBytes(StandardCharsets.UTF_8);
-        snap.persist(new ByteArrayInputStream(archive));
+        // 官方 LocalSandboxSnapshot 是 SandboxSnapshot 存储原语：persist 把输入流原子写
+        // {basePath}/{id}.tar。本实验验证的是该存储原语的 payload 往返（任意字节流），
+        // **不**验证真实 Sandbox 文件系统被快照、也不验证 Sandbox Manager 在下一 call 自动恢复工作区
+        // （后者为 NOT_VERIFIED）。payload 为测试字节流，非"真实 tar 工作区归档"。
+        byte[] payload = ("CP5-PAYLOAD-" + System.nanoTime()).getBytes(StandardCharsets.UTF_8);
+        snap.persist(new ByteArrayInputStream(payload));
 
-        // restore 后字节与 SHA-256 一致。
+        // restore 后字节与 SHA-256 一致（payload persistence round-trip VERIFIED）。
         byte[] restored = snap.restore().readAllBytes();
-        assertArrayEquals(archive, restored, "LocalSandboxSnapshot restore 应与 persist 字节一致");
-        assertEquals(sha256(archive), sha256(restored), "恢复后内容 Hash 一致");
+        assertArrayEquals(payload, restored, "LocalSandboxSnapshot restore 应与 persist payload 字节一致");
+        assertEquals(sha256(payload), sha256(restored), "恢复后 payload Hash 一致");
         assertTrue(snap.isRestorable(), "persist 后 isRestorable 应为 true");
         // 官方原子写：目标文件 {basePath}/snap-cp5.tar 存在。
         assertTrue(Files.exists(base.resolve("snap-cp5.tar")), "官方应写 {basePath}/{id}.tar");
     }
 
     @Test
-    @DisplayName("CP-6：RedisSnapshotSpec 真实 Redis persist/restore 往返（内容 Hash 一致）")
+    @DisplayName("CP-6：RedisSnapshotSpec payload 持久化往返（真实 Redis；非完整 Sandbox 工作区跨 call 自动恢复）")
     void redisSnapshotRoundTrip() throws Exception {
         // 官方 RedisSnapshotSpec（extends RemoteSnapshotSpec，委托 RedisRemoteSnapshotClient）。
-        RedisSnapshotSpec spec = new RedisSnapshotSpec(
-                new JedisPooled(REDIS.getHost(), REDIS.getMappedPort(6379)), "nexus:snap:", 60);
-        SandboxSnapshot snap = spec.build("snap-cp6");
+        // 本实验验证 Snapshot 存储原语的 payload 往返；完整 Sandbox 文件系统跨 call 自动恢复为 NOT_VERIFIED。
+        try (JedisPooled jedis = new JedisPooled(REDIS.getHost(), REDIS.getMappedPort(6379))) {
+            RedisSnapshotSpec spec = new RedisSnapshotSpec(jedis, "nexus:snap:", 60);
+            SandboxSnapshot snap = spec.build("snap-cp6");
 
-        byte[] archive = ("CP6-ARCHIVE-" + System.nanoTime()).getBytes(StandardCharsets.UTF_8);
-        snap.persist(new ByteArrayInputStream(archive));
-        assertTrue(snap.isRestorable(), "Redis persist 后 isRestorable 应为 true");
-        byte[] restored = snap.restore().readAllBytes();
-        assertArrayEquals(archive, restored, "RedisSnapshotSpec restore 应与 persist 字节一致");
-        assertEquals(sha256(archive), sha256(restored), "恢复后内容 Hash 一致（真实 Redis）");
+            byte[] payload = ("CP6-PAYLOAD-" + System.nanoTime()).getBytes(StandardCharsets.UTF_8);
+            snap.persist(new ByteArrayInputStream(payload));
+            assertTrue(snap.isRestorable(), "Redis persist 后 isRestorable 应为 true");
+            byte[] restored = snap.restore().readAllBytes();
+            assertArrayEquals(payload, restored, "RedisSnapshotSpec restore 应与 persist payload 字节一致");
+            assertEquals(sha256(payload), sha256(restored), "恢复后 payload Hash 一致（真实 Redis）");
+        } // JedisPooled 经 try-with-resources 关闭（评审修正 4：避免连接泄漏）
     }
 
     @Test
-    @DisplayName("CP-7：数据面隔离——AgentStateStore 与 SandboxSnapshot 键空间不同，删除一类不影响另一类")
+    @DisplayName("CP-7：双向数据面隔离——删除 Snapshot 不影响 AgentState 读取；删除 AgentState 不影响 Snapshot restore")
     void snapshotVsAgentStateDataPlaneIsolation() throws Exception {
-        // AgentStateStore：键 `nexus:test:agentscope-session:{user}/{session}:agent_state`（DEV-0003 键结构）。
+        // 黑盒说明：Redis KEYS/DEL 仅用于测试观察与受控清理，**不是生产契约**（评审修正 3）。
         RedisAgentStateStoreFactory factory = RedisAgentStateStoreFactory.jedis(
                 "test", REDIS.getHost(), REDIS.getMappedPort(6379), null);
-        try {
+        try (JedisPooled snapJedis = new JedisPooled(REDIS.getHost(), REDIS.getMappedPort(6379))) {
+            String marker = "CP7-会话内容-" + System.nanoTime();
             AgentState state = AgentState.builder()
                     .userId("u-cp7").sessionId("s-cp7")
                     .addMessage(Msg.builderForRole(MsgRole.USER)
-                            .content(List.of(TextBlock.builder().text("CP7-会话内容").build())).build())
+                            .content(List.of(TextBlock.builder().text(marker).build())).build())
                     .build();
             factory.stateStore().save("u-cp7", "s-cp7", "agent_state", state);
 
-            // SandboxSnapshot：键前缀 `nexus:snap:`（CP-6）。
-            RedisSnapshotSpec snapSpec = new RedisSnapshotSpec(
-                    new JedisPooled(REDIS.getHost(), REDIS.getMappedPort(6379)), "nexus:snap:", 60);
-            snapSpec.build("snap-cp7").persist(new ByteArrayInputStream("CP7-SNAPSHOT".getBytes(StandardCharsets.UTF_8)));
+            // Snapshot：键前缀 `nexus:snap:`。
+            RedisSnapshotSpec snapSpec = new RedisSnapshotSpec(snapJedis, "nexus:snap:", 60);
+            byte[] payload = ("CP7-SNAPSHOT-" + System.nanoTime()).getBytes(StandardCharsets.UTF_8);
+            SandboxSnapshot snap = snapSpec.build("snap-cp7");
+            snap.persist(new ByteArrayInputStream(payload));
 
-            // 两类键空间不同（语义/前缀隔离）。
             String agentStateKey = "nexus:test:agentscope-session:u-cp7/s-cp7:agent_state";
-            assertTrue(redis.exists(agentStateKey), "AgentState 键应存在");
-            Set<String> snapshotKeys = redis.keys("nexus:snap:*");
-            assertFalse(snapshotKeys.isEmpty(), "Snapshot 键应存在");
-            assertFalse(redis.keys("nexus:snap:*").contains(agentStateKey),
-                    "两类数据不得共用同一键");
+            assertTrue(redis.exists(agentStateKey), "AgentState 键应存在（观察）");
 
-            // 删除 Snapshot 键 → AgentState 不受影响；删除 AgentState → Snapshot 不受影响。
+            // 方向 A：删除 Snapshot 后，AgentState 仍能经官方 AgentStateStore 读取且含 Marker（真实读取，非 exists）。
+            Set<String> snapshotKeys = redis.keys("nexus:snap:*");
+            assertFalse(snapshotKeys.isEmpty(), "Snapshot 键应存在（观察）");
             redis.del(snapshotKeys.toArray(new String[0]));
-            assertTrue(redis.exists(agentStateKey), "删除 Snapshot 不得影响 AgentState");
+            AgentState afterSnapshotDelete = factory.stateStore()
+                    .get("u-cp7", "s-cp7", "agent_state", AgentState.class)
+                    .orElseThrow(() -> new AssertionError("删除 Snapshot 后 AgentState 应可经官方 Store 读取"));
+            assertTrue(afterSnapshotDelete.getContext().stream()
+                            .map(Msg::getTextContent)
+                            .anyMatch(t -> t != null && t.contains(marker)),
+                    "方向 A：删除 Snapshot 后 AgentState 读取仍含 Marker");
+
+            // 方向 B：重新创建 Snapshot 后删除 AgentState，Snapshot 仍 isRestorable 且 restore 内容与 payload/Hash 一致。
+            byte[] payloadB = ("CP7-SNAPSHOT-B-" + System.nanoTime()).getBytes(StandardCharsets.UTF_8);
+            snapSpec.build("snap-cp7").persist(new ByteArrayInputStream(payloadB));
             redis.del(agentStateKey);
-            assertFalse(redis.exists(agentStateKey), "AgentState 已删");
-            assertTrue(redis.keys("nexus:snap:*").isEmpty(), "AgentState 删除不得影响 Snapshot");
+            SandboxSnapshot snapAfterAgentStateDelete = snapSpec.build("snap-cp7");
+            assertTrue(snapAfterAgentStateDelete.isRestorable(),
+                    "方向 B：删除 AgentState 后 Snapshot 仍 isRestorable");
+            byte[] restoredB = snapAfterAgentStateDelete.restore().readAllBytes();
+            assertArrayEquals(payloadB, restoredB, "方向 B：Snapshot restore 内容与原 payload 一致");
+            assertEquals(sha256(payloadB), sha256(restoredB), "方向 B：Snapshot restore Hash 一致");
         } finally {
             factory.close();
         }
     }
 
     @Test
-    @DisplayName("CP-3：优雅 interrupt 后 AgentState 被保存（bindStateSaver），下一 call 恢复上下文（非原调用栈续跑）")
+    @DisplayName("CP-3：优雅 session interrupt 后 call 结束时 AgentState 已持久化，下一 call 可恢复上下文（非原调用栈续跑）")
     void interruptPersistsAgentStateAndNextCallRecovers() throws Exception {
         Path stateDir = Files.createTempDirectory("cp3-state");
         AgentStateStore store = new JsonFileAgentStateStore(stateDir);
@@ -233,14 +251,18 @@ class RecoveryCapabilityEvidenceTest {
                     adapter.statusOf("task-cp3"), "优雅中断应确认 CANCELLED");
         }
 
-        // 源码证据（ReActAgent）：shutdownManager.bindStateSaver → 中断时持久化精确 per-(userId, sessionId)
-        // AgentState 到 agent_state（"persist that session directly"）。运行证据：agent_state 存在。
-        // 注意：RuntimeContext 使用 scoped 身份，保存分区为 scoped slot。
+        // 归因说明（评审修正 2）：
+        // - 本实验验证的是 **session interrupt** 路径：cancelExecution → agent.interrupt → call 结束 →
+        //   AgentState 已持久化（scoped slot 中 agent_state 存在）→ 下一 call 恢复上下文。
+        // - 具体保存由 interrupt handler 还是 call-finalization 路径完成，本实验不归因；
+        //   **不得声称 bindStateSaver（process graceful shutdown 路径）是本次 interrupt 触发的保存路径**
+        //   （GracefulShutdownManager.bindStateSaver 源码存在，但本实验无其调用证据）。
+        // - 进程 shutdown 的自动恢复：NOT_VERIFIED。
         AgentStateStore reloaded = new JsonFileAgentStateStore(stateDir);
         AgentRuntimeIdentityMapper.ScopedIdentity scopedCp3 = AgentRuntimeIdentityMapper.map(
                 "tn-cp3", "ws-cp3", "user-cp3", "session-cp3");
         assertTrue(reloaded.exists(scopedCp3.scopedUserId(), scopedCp3.scopedSessionId()),
-                "中断路径应保存会话（scoped slot 中 agent_state 存在；bindStateSaver 源码证据）");
+                "session interrupt 后 scoped slot 中 agent_state 应存在（call 结束保存，VERIFIED）");
 
         // 下一 call（同 scoped 会话）恢复上下文（VERIFIED）；不声称"原调用栈原位置继续"（NOT_VERIFIED）。
         endpoint.resetRequests();

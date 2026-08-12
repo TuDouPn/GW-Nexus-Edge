@@ -9,18 +9,22 @@
 
 ---
 
-## 结论总览（能力分级）
+## 结论总览（能力分级 + V1 产品承诺）
 
-| 能力项 | 状态 |
-|---|---|
-| 跨 call 的 AgentState 恢复 | **VERIFIED**（CP-2，官方 AgentStateStore + 真实 Redis/JsonFile） |
-| 优雅 interrupt 后保存部分状态（agent_state） | **VERIFIED**（CP-3，bindStateSaver 源码 + 运行证据） |
-| shutdownInterrupted 字段持久化 | **VERIFIED**（CP-4，字段 JSON 往返）；**自动续跑 NOT_VERIFIED**（未证明） |
-| Sandbox 文件系统跨 call 恢复（Local/Redis） | **VERIFIED**（CP-5/CP-6，persist/restore 字节 + Hash 一致） |
-| 任意进程崩溃点精确续跑 | **NOT_VERIFIED / NOT_SUPPORTED**（无官方 API；未证明） |
-| Token 级断点续跑 | **NOT_SUPPORTED**（非 V1 承诺，03 §6） |
-| 当前 Tool 调用栈恢复 | **NOT_VERIFIED**（无源码/实验证据） |
-| Nexus 业务步骤级恢复 | **Nexus 职责**（MySQL 权威 + AgentStateStore 会话恢复组合，非 AgentScope Checkpoint API） |
+| 能力项 | 技术状态 | V1 产品承诺 |
+|---|---|---|
+| 跨 call 的 AgentState 恢复 | **VERIFIED**（CP-2） | IN_SCOPE（经营分析会话恢复） |
+| 优雅 session interrupt 后 call 结束保存 AgentState、下一 call 恢复上下文 | **VERIFIED**（CP-3，不归因 bindStateSaver） | IN_SCOPE（业务步骤级恢复） |
+| shutdownInterrupted 字段持久化 | **VERIFIED**（CP-4）；自动续跑 **NOT_VERIFIED** | 字段属内部标记，不作为 V1 承诺 |
+| Local/Redis SandboxSnapshot **payload 持久化往返** | **VERIFIED**（CP-5/CP-6） | 不承诺（Snapshot 非 V1 经营分析方案） |
+| 完整 Sandbox 文件系统**跨 call 自动恢复** | **NOT_VERIFIED** | NOT_COMMITTED（Coding 权威恢复 = Commit/Patch 重放） |
+| 当前 Tool 调用栈恢复 | **NOT_VERIFIED**（无官方明确"不支持"，不得据此标 NOT_SUPPORTED） | OUT_OF_SCOPE |
+| 任意进程崩溃点精确恢复 | **NOT_VERIFIED**（同上） | OUT_OF_SCOPE |
+| Token 级断点恢复 | **NOT_VERIFIED**（同上） | OUT_OF_SCOPE |
+| Nexus 业务步骤级恢复 | **Nexus 职责**（非 AgentScope Checkpoint API） | IN_SCOPE（MySQL 权威 + AgentStateStore 会话恢复） |
+
+> 说明：Tool 栈/任意崩溃点/Token 级续跑——官方未明确声明"不支持"，故技术事实统一标记 **NOT_VERIFIED**；
+> V1 产品承诺列另标 **OUT_OF_SCOPE / NOT_COMMITTED**。**不得用"不属于 V1 承诺"反推官方技术能力为 NOT_SUPPORTED。**
 
 ---
 
@@ -62,17 +66,19 @@
   不保证（序列化契约同，但未做混合验证）。
 - **影响**：经营分析会话恢复已满足（DEV-0003 Redis 已验证）。
 
-## CP-3：优雅 interrupt（VERIFIED 部分状态保存 + 下一 call 上下文恢复；原调用栈续跑 NOT_VERIFIED）
+## CP-3：优雅 session interrupt（VERIFIED call 结束保存 + 下一 call 上下文恢复；不归因 bindStateSaver）
 
-- **Artifact/源码**：agentscope-core 2.0.1 `ReActAgent`/`GracefulShutdownManager`（bindStateSaver）。
+- **Artifact/源码**：agentscope-core 2.0.1 `ReActAgent`（interrupt）与 `GracefulShutdownManager`（bindStateSaver
+  存在，源码实证）。**归因（评审修正 2）**：本实验验证的是 **session interrupt 路径**
+  （cancelExecution → agent.interrupt → call 结束 → AgentState 持久化 → 下一 call 恢复上下文）；
+  **具体保存由 interrupt handler 还是 call-finalization 路径完成，本实验不归因**；
+  **不得声称 bindStateSaver（process graceful shutdown 路径）是本次 interrupt 触发的保存路径**
+  （无调用证据）。进程 shutdown 的自动恢复：**NOT_VERIFIED**。
 - **实验**：`interruptPersistsAgentStateAndNextCallRecovers`。
-- **断言**：start（endpoint delay）→ cancelExecution（interrupt）→ CANCELLED → scoped slot 中 agent_state 存在
-  （中断路径保存会话，bindStateSaver 源码 + 运行证据）→ resume 同会话 → 模型请求含首次 MARKER
-  （下一 call 恢复上下文）。
+- **断言**：start（endpoint delay）→ cancelExecution（interrupt）→ CANCELLED → scoped slot 中 agent_state
+  存在（call 结束保存）→ resume 同会话 → 模型请求含首次 MARKER（下一 call 恢复上下文）。
 - **结果**：通过。
-- **区分**：**"优雅中断后下一次 call 恢复上下文"= VERIFIED**；**"在原调用栈原位置继续执行"= NOT_VERIFIED**
-  （无源码/实验证据支持断点续跑）。
-- **影响**：业务步骤级恢复（03 §6）满足；不冒充精确断点续跑。
+- **区分**：**"优雅中断后下一次 call 恢复上下文"= VERIFIED**；**"在原调用栈原位置继续执行"= NOT_VERIFIED**。
 
 ## CP-4：shutdownInterrupted（字段持久化 VERIFIED；自动续跑 NOT_VERIFIED）
 
@@ -84,46 +90,53 @@
 - **结论**：**字段持久化 VERIFIED**；**自动续跑 NOT_VERIFIED**（本实验只证明字段往返，不证明字段触发任何
   自动续跑执行）。
 
-## CP-5：LocalSandboxSnapshot（VERIFIED）
+## CP-5：LocalSandboxSnapshot payload 持久化往返（VERIFIED；完整工作区跨 call 自动恢复 NOT_VERIFIED）
 
 - **Artifact/源码**：agentscope-harness 2.0.1 `LocalSnapshotSpec(Path basePath)`/`LocalSandboxSnapshot`
   （persist 原子写 `{basePath}/{id}.tar`；restore 读回）。
-- **实验**：`localSandboxSnapshotRoundTrip`——真实临时目录，persist(tar 字节流) → restore() → 字节与
+- **实验**：`localSandboxSnapshotRoundTrip`——真实临时目录，persist(payload 字节流) → restore() → 字节与
   SHA-256 一致；isRestorable true；目标文件存在。
 - **结果**：通过。
-- **边界**：快照为沙箱工作区归档字节（tar），非 Agent 会话状态；自建实现未使用（官方类直接调用）。
+- **证据等级（评审修正 1）**：本实验只验证 **Snapshot 存储原语的 payload persistence round-trip**
+  （任意字节流，非"真实 tar 工作区归档"）；**未启动真实 Sandbox、未验证 Sandbox Manager 在下一 call
+  自动恢复工作区** → **完整 Sandbox 文件系统跨 call 自动恢复 = NOT_VERIFIED**。官方文档/源码表明其设计
+  用途为沙箱快照（Coding 取向），但本 Work Item 不新增完整 Docker Sandbox 集成测试（避免扩大到 G-09）。
 
-## CP-6：RedisSnapshotSpec（VERIFIED）
+## CP-6：RedisSnapshotSpec payload 持久化往返（VERIFIED；完整工作区跨 call 自动恢复 NOT_VERIFIED）
 
 - **Artifact/源码**：agentscope-extensions-redis 2.0.1 `RedisSnapshotSpec(UnifiedJedis, keyPrefix, ttlSeconds)`。
-- **实验**：`redisSnapshotRoundTrip`——真实 Redis（Testcontainers redis:7.4.2），persist → isRestorable →
-  restore → 字节与 SHA-256 一致。
+- **实验**：`redisSnapshotRoundTrip`——真实 Redis（Testcontainers redis:7.4.2），persist(payload) →
+  isRestorable → restore → 字节与 SHA-256 一致；JedisPooled 经 try-with-resources 关闭（评审修正 4）。
 - **结果**：通过。
-- **边界**：快照键前缀 `nexus:snap:`（本实验）；**不得将 RedisSnapshot 设为大型 Node Workspace 的 V1 默认方案**
-  （Coding 权威恢复 = Base Commit + Commit/Patch 重放，见 CP-9）。
+- **证据等级**：同 CP-5——仅 Snapshot 存储原语 payload 往返 VERIFIED；完整工作区跨 call 自动恢复
+  NOT_VERIFIED；不将 RedisSnapshot 设为大型 Node Workspace 的 V1 默认方案（CP-9）。
 
-## CP-7：数据面隔离（VERIFIED）
+## CP-7：双向数据面隔离（VERIFIED；黑盒观察说明）
 
-- **实验**：`snapshotVsAgentStateDataPlaneIsolation`——AgentStateStore 键
-  `nexus:test:agentscope-session:u-cp7/s-cp7:agent_state` vs RedisSnapshot 键 `nexus:snap:*`：前缀不同；
-  删除 Snapshot 键不影响 AgentState；删除 AgentState 不影响 Snapshot。
+- **实验**：`snapshotVsAgentStateDataPlaneIsolation`——
+  - 方向 A：persist Snapshot → 删除 Snapshot 键 → **官方 AgentStateStore.get 真实读取** AgentState 且含 Marker
+    （非仅 exists）；
+  - 方向 B：重新 persist Snapshot（新 payload）→ 删除 agent_state 键 → Snapshot **isRestorable() +
+    restore 内容与原 payload / SHA-256 一致**。
 - **结果**：通过。
-- **边界**：两类数据语义/键空间分离；不直接操作或依赖未公开内部键作为生产契约。
+- **黑盒说明（评审修正 3）**：Redis KEYS/DEL 仅用于测试观察与受控清理，**不是生产契约**；生产不依赖
+  未公开内部键（AgentState 键为官方键结构，快照键为官方 RedisSnapshotSpec keyPrefix）。
 
-## CP-8：续跑能力边界（7 项分列）
+## CP-8：续跑能力边界（技术状态 + V1 承诺分列）
 
-| 项 | 状态 | 依据 |
+| 项 | 技术状态 | V1 承诺 |
 |---|---|---|
-| 跨 call 会话恢复 | **VERIFIED** | CP-2（AgentStateStore 官方序列化 + 跨实例） |
-| 优雅 interrupt 后上下文恢复 | **VERIFIED** | CP-3（bindStateSaver 保存 + 下一 call 恢复） |
-| shutdownInterrupted 标记 | **VERIFIED（字段持久化）/ NOT_VERIFIED（自动续跑）** | CP-4 |
-| 沙箱文件系统恢复 | **VERIFIED** | CP-5/CP-6（Local/Redis persist/restore + Hash） |
-| 当前 Tool 调用栈恢复 | **NOT_VERIFIED** | 无源码/实验证据 |
-| 任意进程崩溃点恢复 | **NOT_VERIFIED / NOT_SUPPORTED** | 无官方 API；未证明 |
-| Token 级断点恢复 | **NOT_SUPPORTED** | 非 V1 承诺（03 §6）；官方未提供 |
+| 跨 call 会话恢复 | **VERIFIED** | IN_SCOPE |
+| 优雅 interrupt 后上下文恢复 | **VERIFIED** | IN_SCOPE |
+| shutdownInterrupted 标记 | **字段持久化 VERIFIED / 自动续跑 NOT_VERIFIED** | 不作承诺 |
+| 沙箱文件系统恢复 | **payload 往返 VERIFIED / 跨 call 自动恢复 NOT_VERIFIED** | NOT_COMMITTED |
+| 当前 Tool 调用栈恢复 | **NOT_VERIFIED** | OUT_OF_SCOPE |
+| 任意进程崩溃点恢复 | **NOT_VERIFIED** | OUT_OF_SCOPE |
+| Token 级断点恢复 | **NOT_VERIFIED** | OUT_OF_SCOPE |
 
-> 说明：NOT_SUPPORTED 仅用于官方明确无能力或架构上无法实现的项目；NOT_VERIFIED 用于"未找到类名但
-> 未能证明支持/不支持"的项目。**不得把"搜索不到类名"单独作为 NOT_SUPPORTED 的充分证据**。
+> 说明：官方未对 Tool 栈/崩溃点/Token 级明确声明"不支持"，故统一技术事实为 **NOT_VERIFIED**；
+> V1 产品承诺列另标 **OUT_OF_SCOPE / NOT_COMMITTED**；**不得用"不属于 V1 承诺"反推官方能力为
+> NOT_SUPPORTED**（评审修正 5）。
 
 ## CP-9：Coding 权威恢复边界（对照 22_CODING_SANDBOX_AND_SUPPLY_CHAIN.md §6）
 

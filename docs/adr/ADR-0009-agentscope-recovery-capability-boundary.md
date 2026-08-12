@@ -43,20 +43,32 @@ AgentScope 2.0.1 依赖闭包（agentscope-core/harness/extensions-model-openai/
 ## 验证
 
 - 依赖闭包扫描（dependency:tree，2026-08-12）：agentscope-core/harness/extensions-model-openai/
-  extensions-redis 均 2.0.1；无独立 Checkpoint API（jar 扫描）。
-- 实现阶段可复现实验：CP-1~CP-9（跨 call AgentState 恢复、interrupt 部分状态、shutdownInterrupted、
-  Local/Redis SandboxSnapshot 往返、数据面隔离、崩溃点/Tool 栈/Token 续跑不支持证明、Coding 权威恢复边界）。
-- 无法实证项标记 NOT_VERIFIED/BLOCKED，不写成 VERIFIED；不用 Mock 冒充官方能力。
+  extensions-redis 均 2.0.1；sources jar 已下载核验（非 main/latest）。
+- 可复现实验（真实 Redis Testcontainers / 真实临时目录；`RecoveryCapabilityEvidenceTest` 5/5）：
+  - **AgentState 跨 call/跨实例恢复：VERIFIED**（官方 AgentStateStore 序列化往返，含 context/字段）；
+  - **session interrupt 后下一 call 上下文恢复：VERIFIED**（cancelExecution→interrupt→call 结束保存→
+    下一 call 恢复；**不归因 bindStateSaver**，process graceful shutdown 自动恢复 NOT_VERIFIED）；
+  - **shutdownInterrupted 字段持久化：VERIFIED**（JSON 往返）；**自动续跑：NOT_VERIFIED**；
+  - **Local/Redis SandboxSnapshot payload 往返：VERIFIED**（存储原语字节 + Hash 一致）；
+    **完整 Sandbox 文件系统跨 call 自动恢复：NOT_VERIFIED**（未启动完整 Sandbox）；
+  - **Tool 栈、任意崩溃点、Token 级续跑：NOT_VERIFIED**（官方未明确"不支持"，不以"搜不到类名"标
+    NOT_SUPPORTED），且 **不属于 V1 产品承诺（OUT_OF_SCOPE / NOT_COMMITTED）**。
+- 无法实证项标记 NOT_VERIFIED；不用 Mock 冒充官方能力。
 
 ## 影响
 
 - 修正 03 §6 / 08 §9 "AgentScope 保存官方 Execution Checkpoint"未经实证表述（ADR 批准后原子同步）。
 - G-03：Checkpoint"能力盘点"子项完成后可关闭；真实 Provider 仍 BLOCKED_BY_CREDENTIAL → G-03 保持 PARTIAL。
-- OQ-007：Checkpoint 部分以本 ADR 定级（待评审/未证明）。
+- OQ-007：Checkpoint 部分以本 ADR 定级（NOT_VERIFIED/NOT_COMMITTED，待评审）。
 
 ## 未解决问题
 
-- interrupt 后部分状态保存、shutdownInterrupted 持久化、SandboxSnapshot 真实行为：待实证（CP-3~CP-6）。
+- **完整 Sandbox 文件系统跨 call 自动恢复：NOT_VERIFIED**——本 Work Item 仅验证 Snapshot 存储原语
+  payload 往返；完整 Docker Sandbox 集成验证属 Coding/G-09 范围，不在本项。
+- **进程 graceful shutdown 自动恢复：NOT_VERIFIED**——bindStateSaver 源码存在，无调用证据；
+  session interrupt 保存路径 VERIFIED 但不归因。
+- **shutdownInterrupted 自动续跑：NOT_VERIFIED**（仅字段持久化 VERIFIED）。
+- **Tool 栈 / 任意崩溃点 / Token 级续跑：NOT_VERIFIED（官方未明确"不支持"），OUT_OF_SCOPE（V1 承诺）。**
 - 官方"Execution Checkpoint"表述在 03/08 的落点：待 ADR 批准后原子同步修正。
 
 ## 待批准后原子同步
