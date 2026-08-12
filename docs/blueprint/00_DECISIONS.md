@@ -33,6 +33,7 @@
 | A-005 | Model Gateway 是治理层，模型协议适配优先使用 AgentScope 官方 Provider。 |
 | A-006 | 经营分析采用 Business Analyst 主 Agent、专业 Tool、AgentScope Workflow 和独立 Review Agent；不为展示效果强拆多个 Agent。 |
 | A-007 | AgentScope Redis Persistence/Recovery（ADR-0008）：采用 `agentscope-extensions-redis` 的 `RedisAgentStateStore`（Jedis 7.4.1 VERIFIED）作为 Session/Agent State 运行时持久化；恢复引用显式携带 tenantId/workspaceId/userId/sessionId（scoped 分区，六字段 fail-closed）；恢复请求仅来自 MySQL 授权数据；Redis 为运行时恢复投影、MySQL 为长期权威源；Session 删除归独立生命周期服务；真实 Provider 保持 BLOCKED_BY_CREDENTIAL；AgentScope Checkpoint 待评审。 |
+| A-008 | AgentScope Recovery Capability 边界（ADR-0009）：无独立公开 Execution Checkpoint API；官方恢复能力由 AgentStateStore/AgentState/interrupt/SandboxSnapshot/DistributedStore 组合提供。Nexus 业务 Task/TaskAttempt 由 MySQL 保存权威状态并采用业务步骤级恢复；AgentStateStore 负责会话/AgentState 恢复；SandboxSnapshot payload 原语已验证但不得描述成已验证完整 Sandbox 自动恢复；不存在已验证的 Token、Tool 栈或任意崩溃点精确续跑能力（技术 NOT_VERIFIED、V1 承诺 OUT_OF_SCOPE）；Coding 权威恢复 = 新 Sandbox + 不可变 Base Commit + Commit/Patch/ChangeSet 重放；Nexus 不自研第二套 Checkpoint Runtime。 |
 
 ## 3. 技术基线
 

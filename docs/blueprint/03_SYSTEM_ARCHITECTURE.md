@@ -122,11 +122,18 @@ AgentScopeAdapter 只允许：
 
 ## 6. 长任务与恢复
 
-- Agent 运行 Checkpoint、Memory 和 Execution Recovery 使用 AgentScope 官方能力。
-- Nexus Edge 持久化 Task、使用的 Skill/Prompt/Policy/Snapshot 版本及 Execution ID。
+- Agent 执行状态持久化与恢复使用 AgentScope 官方能力组合（ADR-0009）：AgentStateStore 负责会话/
+  AgentState 恢复（Redis 实现已验证，ADR-0008）；优雅 session interrupt 后 AgentState 持久化、下一调用
+  恢复上下文（VERIFIED）；SandboxSnapshot 沙箱快照 payload 原语已验证，但**不构成已验证的完整
+  Sandbox 文件系统跨调用自动恢复**；**不存在已验证的 Token、Tool 栈或任意崩溃点精确续跑能力**
+  （技术 NOT_VERIFIED，V1 承诺 OUT_OF_SCOPE）。
+- Nexus Edge 持久化 Task、使用的 Skill/Prompt/Policy/Snapshot 版本及 Execution ID；**业务 Task 和
+  TaskAttempt 由 MySQL 保存权威业务状态，并采用业务步骤级恢复**（不依赖 AgentScope Checkpoint API）。
 - V1 支持业务步骤级恢复，不要求 Token 级续跑。
 - 输入 Snapshot、Skill Version、Permission 或 Policy 发生变化时，不恢复原 Execution；创建新尝试并保留历史。
 - 所有重试使用同一 Task ID 与递增 Attempt，外部副作用必须依赖 Idempotency Key。
+- **Nexus Edge 不自研第二套 Agent Checkpoint Runtime**；Coding 权威恢复 = 新 Sandbox + 不可变
+  Base Commit + Commit/Patch/ChangeSet 重放（22 §6）。
 
 Coding Task恢复额外遵循：新Sandbox从Base Commit检出并重放Hash校验的Checkpoint Commit/Patch；不恢复旧容器或整个可变文件系统。Repository、Build Contract、Secret、Permission或Policy变化时重新验证或重新执行。
 

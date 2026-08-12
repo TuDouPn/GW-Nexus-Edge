@@ -1,8 +1,12 @@
 # ADR-0009 — AgentScope Recovery Capability 边界（Checkpoint 能力核验）
 
-> 状态：**Proposed（草案，待产品架构负责人批准）**
-> 日期：2026-08-12（草案）
-> 决策人：（待产品架构负责人）
+> 状态：**Accepted（2026-08-12 经产品架构负责人批准）**
+> 日期：2026-08-12（草案）；2026-08-12（批准）
+> 决策人：产品架构负责人（2026-08-12 批准）
+> 批准范围：AgentScope 2.0.1 Recovery Capability 边界（无独立公开 Execution Checkpoint API；官方恢复能力
+> 组合 AgentStateStore/AgentState/interrupt/SandboxSnapshot/DistributedStore；Nexus 业务步骤级恢复边界；
+> 经营分析与 Coding Workspace 恢复策略；Token/Tool 栈/任意崩溃点续跑 NOT_VERIFIED + OUT_OF_SCOPE；
+> 禁止 Nexus 自研第二套 Agent Checkpoint Runtime）。
 > 关联决策/Issue：DEV-0004、G-03、OQ-007
 > 关联 ADR：ADR-0001、ADR-0006、ADR-0008（Accepted）；ADR-0007（Proposed）
 
@@ -23,10 +27,12 @@ AgentScope 2.0.1 依赖闭包（agentscope-core/harness/extensions-model-openai/
    - `AgentState`：**按 userId/sessionId 寻址的 per-session 可变状态；每次 call 开始时加载、
      结束或受支持的中断路径中保存**。不得把 AgentState 描述为 Task、TaskAttempt 或某次模型调用的
      独立 Execution Checkpoint；
-   - `interrupt`（优雅中断）：ReActAgent `interrupt(ctx)` 存在（javap 实证），中断后部分状态保存与
-     下一 call 行为**待实证**；
-   - `SandboxSnapshot`：沙箱文件系统快照（`persist(InputStream)/restore()`），Local/Remote/Redis 实现；
-     真实 persist/restore 行为**待实证**；
+   - `interrupt`（优雅中断）：ReActAgent `interrupt(ctx)` 存在（javap 实证）。
+     **Session interrupt 后结束本次调用、AgentState 持久化、下一次调用恢复上下文：VERIFIED**（CP-3，
+     不归因 bindStateSaver）；**JVM/进程终止后的自动恢复：NOT_VERIFIED**；
+   - `SandboxSnapshot`：沙箱文件系统快照（`persist(InputStream)/restore()`），Local/Remote/Redis 实现。
+     **Snapshot payload 的 persist/restore 及 Local/Redis 往返：VERIFIED**（CP-5/CP-6）；
+     **完整 Sandbox 文件系统跨调用自动恢复：NOT_VERIFIED**（未启动完整 Sandbox）；
    - `DistributedStore`：远程执行组合（远程文件系统/消息总线/异步工具/沙箱快照），Coding 取向。
 3. **Nexus 业务步骤级恢复边界**：Nexus Task/TaskAttempt（MySQL 权威）+ AgentStateStore 会话恢复组合
    承担业务步骤级恢复（03 §6）；**不属于 AgentScope Checkpoint API**。
@@ -35,10 +41,11 @@ AgentScope 2.0.1 依赖闭包（agentscope-core/harness/extensions-model-openai/
    Commit/Patch/ChangeSet 重放**（22 §6）；**SandboxSnapshot 仅作为同一 Attempt 内跨 call 的性能优化
    和工作区延续能力，不是代码权威源、业务恢复权威源或 Production Artifact**；**不得让 RedisSnapshot
    保存大型 Node Workspace 成为 V1 默认架构**。
-6. **Token/Tool 栈/任意崩溃点续跑不属于 V1 承诺**：模型 Token 断点、当前 Tool 调用栈、任意进程崩溃点
-   的精确续跑未被证明且不属于 V1（NOT_SUPPORTED/NOT_VERIFIED）。
-7. **禁止 Nexus 自研第二套 Agent Checkpoint Runtime**：官方能力不足时如实标记 NOT_SUPPORTED/BLOCKED，
-   恢复退化为业务步骤级；不得自行实现 Checkpoint 机制。
+6. **Token/Tool 栈/任意崩溃点续跑**：技术证据状态统一为 **NOT_VERIFIED**（官方未明确"不支持"，
+   不得以"搜不到类名"标 NOT_SUPPORTED）；V1 产品承诺状态单独为 **OUT_OF_SCOPE / NOT_COMMITTED**；
+   **禁止使用 "NOT_SUPPORTED/NOT_VERIFIED" 混合表述**。
+7. **禁止 Nexus 自研第二套 Agent Checkpoint Runtime**：官方能力不足时如实标记，恢复退化为业务步骤级；
+   不得自行实现 Checkpoint 机制。
 
 ## 验证
 
