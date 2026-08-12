@@ -159,6 +159,16 @@ Review Agent 不能替代业务负责人审核。模型 Review 失败时 Task �
     不直接 EXPIRE/操作 AgentScope 官方内部键。
   - 真实模型 Provider 验证保持 BLOCKED_BY_CREDENTIAL（需 DEEPSEEK_*/OPENAI_* 凭证）；
     AgentScope Checkpoint（沙箱快照，Coding 取向）待评审，V1 经营分析暂不采用。
+- **Recovery Capability 边界（ADR-0009，Accepted）**：
+  - AgentScope 2.0.1 无独立公开 Execution Checkpoint API；恢复能力由 AgentStateStore/AgentState/
+    优雅中断/SandboxSnapshot/DistributedStore 组合提供。
+  - Session interrupt 后结束本次调用、AgentState 持久化、下一次调用恢复上下文：VERIFIED；
+    JVM/进程终止后自动恢复：NOT_VERIFIED。
+  - SandboxSnapshot payload persist/restore（Local/Redis 往返）：VERIFIED；完整 Sandbox 文件系统
+    跨调用自动恢复：NOT_VERIFIED（不得描述成已验证）。
+  - Token、Tool 调用栈、任意崩溃点续跑：技术 NOT_VERIFIED；V1 承诺 OUT_OF_SCOPE / NOT_COMMITTED。
+  - Nexus 业务 Task/TaskAttempt 由 MySQL 保存权威状态并采用业务步骤级恢复；Nexus 不自研第二套
+    Checkpoint Runtime；Coding 权威恢复 = 新 Sandbox + 不可变 Base Commit + Commit/Patch/ChangeSet 重放。
 
 ## 10. Skill 治理
 
