@@ -148,6 +148,17 @@ Review Agent 不能替代业务负责人审核。模型 Review 失败时 Task �
 - Nexus Edge 记录业务阶段、进度投影和 Attempt。
 - 用户取消通过 Adapter 转交 AgentScope；确认完成后 Task 进入 CANCELLED。
 - 模型暂时不可用进入 RETRY_WAIT；所有模型不可用时 Task 最终 FAILED，不降级成非 Agent 报告流水线。
+- **Redis Persistence/Recovery（ADR-0008，Accepted）**：
+  - 采用 `agentscope-extensions-redis` 官方 `RedisAgentStateStore`（Jedis 7.4.1 VERIFIED）作为
+    Session/Agent State 运行时持久化；Lettuce 7.5.2 NOT_VERIFIED（未来采用须单独兼容测试 + ADR）。
+  - 恢复引用显式携带 tenantId/workspaceId/userId/sessionId；执行上下文保存在 scoped 分区，
+    恢复时从 scoped slot 读取并逐项校验（taskId/tenantId/workspaceId/userId/sessionId，fail-closed）；
+    **恢复请求只能由业务层基于 MySQL 已授权的 Task/TaskAttempt 数据构造**。
+  - 数据权威边界：Redis 为运行时恢复投影，MySQL 为 Task/TaskAttempt 长期权威源；
+    Session 删除归独立生命周期服务（正式会话结束 + 无可恢复 Task + Retention Policy）；
+    不直接 EXPIRE/操作 AgentScope 官方内部键。
+  - 真实模型 Provider 验证保持 BLOCKED_BY_CREDENTIAL（需 DEEPSEEK_*/OPENAI_* 凭证）；
+    AgentScope Checkpoint（沙箱快照，Coding 取向）待评审，V1 经营分析暂不采用。
 
 ## 10. Skill 治理
 

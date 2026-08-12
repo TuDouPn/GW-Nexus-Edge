@@ -147,7 +147,7 @@ class AgentScopeRound5SemanticsTest {
                     "task-iso-ws-a", "attempt-a",
                     "00000000-0000-0000-0000-000000000000", "",
                     AgentExecutionReference.ExecutionStatus.COMPLETED,
-                    "user-shared", "session-shared");
+                    "tenant-A", "workspace-A", "user-shared", "session-shared");
             AgentExecutionReference resumedA = resume.resumeExecution(refA, "恢复 A");
             assertNotNull(resumedA);
 
@@ -174,7 +174,7 @@ class AgentScopeRound5SemanticsTest {
                     "task-never-existed", "attempt-x",
                     "00000000-0000-0000-0000-000000000000", "",
                     AgentExecutionReference.ExecutionStatus.COMPLETED,
-                    "user-fail", "session-fail");
+                    "tenant-fail", "workspace-fail", "user-fail", "session-fail");
             assertThrows(IllegalStateException.class,
                     () -> noCtx.resumeExecution(ref, "恢复不存在上下文的 Task"),
                     "resume 找不到执行上下文应 fail-closed 抛异常");

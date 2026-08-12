@@ -18,6 +18,7 @@
 | Task | Nexus Edge 业务任务（业务标识 taskId，贯穿全部 TaskAttempt） |
 | TaskAttempt | Task 的一次执行尝试（Nexus 业务主键 taskAttemptId，UUIDv7），关联一个 AgentScope Agent 实例标识（agentId） |
 | Execution | AgentScope 2.0.1 无独立 Execution ID 概念；运行实例以 AgentScope Agent 实例标识（agentId，构建时 UUID）为标识，禁止称 agentId 为"官方 Execution ID" |
+| 运行期恢复投影 | Nexus 暂存于 Redis 的 ExecutionContextState（scoped 分区）副本，用于恢复时的一致性校验；Task/TaskAttempt 长期权威源属于 MySQL（ADR-0008） |
 | Tool | AgentScope Agent 调用的确定性或外部能力 |
 | Model Governance | Nexus Edge 对模型注册、Secret Ref、白名单、Policy、额度、成本和审计的治理层，不是调用协议层 |
 | assistant-ui | Nexus Edge Agent 对话场景采用的 React UI Component/Primitive 依赖；通过 `@gwnexus/assistant-ui` 治理，不是 Agent Runtime、业务状态机或消息权威存储 |

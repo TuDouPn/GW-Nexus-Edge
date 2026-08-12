@@ -48,11 +48,18 @@ public interface AgentExecutionPort {
      * 在业务允许重试的前提下，恢复此前被中断/失败的执行。
      *
      * <p>语义：必须使用 AgentScope 官方 State Store/恢复能力真正重新建立 Agent
-     * 并继续同一会话（同 userId/sessionId + 持久化会话上下文），返回新 Attempt 的
+     * 并继续同一会话（同 scoped 身份 + 持久化会话上下文），返回新 Attempt 的
      * 真实引用；禁止生成假 Agent 标识。若 AgentScope 2.0.1 不支持该语义，
      * 必须通过 ADR 修订本 Port 与 08 规格（不得静默降级）。
      *
-     * @param reference   被恢复尝试的执行引用
+     * <p>恢复 Scope（DEV-0003 修正，ADR-0008）：{@code reference} 必须显式携带
+     * {@code tenantId/workspaceId/userId/sessionId}；恢复时据此重算 AgentScope
+     * scoped 身份并从 scoped Redis slot 读取状态，逐项校验
+     * {@code taskId/tenantId/workspaceId/userId/sessionId}（缺失/错绑/篡改/跨 Scope
+     * 一律 fail-closed）。<b>恢复请求只能由正式业务层基于 MySQL 中已授权的
+     * Task/TaskAttempt 数据构造，不得信任客户端提交的恢复 Scope</b>。
+     *
+     * @param reference   被恢复尝试的执行引用（含完整恢复 Scope）
      * @param resumeReason 业务恢复该执行的原因
      * @return 恢复后的新尝试引用（真实 Agent 标识）
      */

@@ -205,7 +205,7 @@ class AgentScopeRecoveryCapabilityTest {
                     "task-nostore", "attempt-nostore",
                     "00000000-0000-0000-0000-000000000000", "",
                     AgentExecutionReference.ExecutionStatus.COMPLETED,
-                    "user-nostore", "session-nostore");
+                    "tenant-nostore", "workspace-nostore", "user-nostore", "session-nostore");
             try {
                 noStore.resumeExecution(ref, "无状态存储");
                 throw new AssertionError("无 State Store 时 resumeExecution 应抛异常（fail-fast）");

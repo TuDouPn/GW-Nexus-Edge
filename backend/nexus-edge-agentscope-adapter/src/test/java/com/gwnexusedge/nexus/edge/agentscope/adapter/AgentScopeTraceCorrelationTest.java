@@ -112,7 +112,7 @@ class AgentScopeTraceCorrelationTest {
         AgentExecutionReference ref = AgentExecutionReference.firstAttempt(
                 "task-trace-3", "attempt-trace-3", agent.getAgentId(), null,
                 AgentExecutionReference.ExecutionStatus.STARTED,
-                "user-trace-3", "session-trace-3");
+                "tenant-trace-3", "workspace-trace-3", "user-trace-3", "session-trace-3");
         assertFalse("unassigned".equals(ref.traceId()), "不得产生 unassigned 伪造值");
         assertNotNull(ref.traceId(), "traceId 不得为 null");
         assertEquals("task-trace-3", ref.taskId(), "taskId 应为业务 Task 标识");
