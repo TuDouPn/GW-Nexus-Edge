@@ -1,0 +1,4 @@
+# Redis Test Slice Profile（Sa-Token Redis 持久化 / Redis 客户端能力）。
+# Redis 地址由测试类 @DynamicPropertySource 注入（Testcontainers GenericContainer redis）。
+# Sa-Token HTTP 测试类通过 @SpringBootTest properties 排除 DataSource 相关自动配置
+# （该类不依赖数据库，见 SaTokenHttpCompatibilityTest）。

@@ -1,0 +1,9 @@
+# PostgreSQL Test Slice Profile。
+# 数据源地址由测试类 @DynamicPropertySource 注入（Testcontainers PostgreSQLContainer）。
+# 启用 Flyway PostgreSQL 自动迁移（locations 指向 PostgreSQL 独立迁移目录）。
+# 注：Flyway PostgreSQL 的 migrate/validate/checksum 用例经 Flyway Java API 直接验证
+# （见 FlywayCompatibilityTest），本 Profile 用于需要 Spring 上下文装配 PG 的场景。
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/postgresql

@@ -7,6 +7,7 @@
     <!--
       GW Nexus Edge V1 后端 reactor。
       DEV-0001 范围：Java 21 + Spring Boot 4.1.0 + AgentScope Java 2.0.1 兼容性验证。
+      DEV-0002 范围：G-02 外围依赖（MyBatis-Plus/Sa-Token/JDBC/Redis/Flyway）兼容验证与版本冻结。
       版本由 docs/blueprint/00_DECISIONS.md 冻结，禁止静默降级。
       模块约定见 docs/blueprint/13_ENGINEERING_STANDARD.md。
     -->
@@ -22,7 +23,7 @@
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>GW Nexus Edge Backend</name>
-    <description>GW Nexus Edge 后端 reactor；DEV-0001 建立 AgentScope 兼容性基线。</description>
+    <description>GW Nexus Edge 后端 reactor；DEV-0001 建立 AgentScope 兼容性基线，DEV-0002 冻结外围依赖。</description>
 
     <properties>
         <java.version>21</java.version>
@@ -34,13 +35,27 @@
         <agentscope.version>2.0.1</agentscope.version>
         <!-- AgentScope core/harness/扩展版本由官方 BOM 统一管理 -->
 
-        <!-- 统一 Testcontainers 版本（Spring Boot BOM 未覆盖 junit-jupiter 时使用） -->
-        <testcontainers.version>1.20.6</testcontainers.version>
+        <!--
+          DEV-0002（G-02 外围依赖冻结）：
+          - MyBatis-Plus / Sa-Token 使用官方 Spring Boot 4 Starter（Maven Central 核验，2026-08-11）。
+          - MySQL/PostgreSQL/Redis/Flyway 由 Spring Boot 4.1.0 BOM 管理，不另定版本。
+          - Testcontainers 覆盖 SB 4.1.0 BOM（2.0.5）的明确原因（理由记录于 docs/dev-0002/COMPATIBILITY_REPORT.md）：
+            (1) Testcontainers 2.0.x 已移除 org.testcontainers:mysql / postgresql / junit-jupiter 模块
+                （Maven Central 404 实证），无法使用既有 JUnit 5 容器模式；
+            (2) 1.x 线内 1.20.6 → 1.21.4：1.20.6 的 docker-java 无法协商 colima Docker daemon
+                29.5.2 的 API（客户端默认 1.32 < 服务端最低 1.40，真实运行日志实证）；
+                1.21.4 升级 docker-java 后协商成功，且保持 mysql/postgresql/junit-jupiter 模块。
+        -->
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
+        <sa-token.version>1.45.0</sa-token.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <modules>
         <module>nexus-edge-domain-agentscope-port</module>
         <module>nexus-edge-agentscope-adapter</module>
+        <!-- DEV-0002：外围依赖兼容性测试模块（仅测试用，不被生产模块依赖，不进入生产制品） -->
+        <module>nexus-edge-compatibility-test</module>
     </modules>
 
     <dependencyManagement>
@@ -64,7 +79,7 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- 统一管理 Testcontainers 版本 -->
+            <!-- 统一管理 Testcontainers 版本（覆盖 SB 4.1.0 BOM 2.0.5 的理由见 properties 注释与 DEV-0002 报告） -->
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers</artifactId>
@@ -73,6 +88,16 @@
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>junit-jupiter</artifactId>
+                <version>${testcontainers.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>mysql</artifactId>
+                <version>${testcontainers.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>postgresql</artifactId>
                 <version>${testcontainers.version}</version>
             </dependency>
         </dependencies>

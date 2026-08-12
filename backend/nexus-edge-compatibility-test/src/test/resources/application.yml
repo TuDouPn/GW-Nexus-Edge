@@ -1,0 +1,14 @@
+# DEV-0002 兼容性 Harness 基础配置。
+# 各测试类通过 @SpringBootTest + 独立 Profile/Test Slice 覆盖数据库/Redis 连接
+# （@DynamicPropertySource 注入 Testcontainers 地址），避免多数据源互相污染（DEV-0002 §11）。
+spring:
+  # 默认不启用 Flyway 自动迁移；mysql/postgres Profile 显式启用（DEV-0002 FW-2）。
+  flyway:
+    enabled: false
+
+# Sa-Token 兼容性验证配置（ST-2/ST-5/ST-8）。
+sa-token:
+  token-name: satoken
+  timeout: 86400
+  is-concurrent: true
+  is-share: true

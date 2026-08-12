@@ -1,0 +1,7 @@
+# MySQL Test Slice Profile（MyBatis-Plus / 组合 Smoke Test）。
+# 数据源地址由各测试类 @DynamicPropertySource 注入（Testcontainers MySQLContainer）。
+# 启用 Flyway MySQL 自动迁移（locations 指向 MySQL 独立迁移目录，FW-6 目录隔离）。
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/mysql

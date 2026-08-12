@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      DEV-0002（G-02）外围依赖兼容性测试模块。
+      - 只用于兼容性验证：验证 MyBatis-Plus / Sa-Token / JDBC / Redis / Flyway 在
+        Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 固定核心下的真实兼容性。
+      - 不进入生产镜像；不被任何生产模块依赖；不包含正式业务功能。
+      - 版本选择规则（DEV-0002 §12）：Spring Boot 4.1.0 BOM 优先；
+        官方 Spring Boot 4 Starter 优先；不以「最新版本」作为选择依据。
+      - Testcontainers 使用 1.20.6（覆盖 BOM 2.0.5 的明确兼容原因见根 pom 注释与
+        docs/dev-0002/COMPATIBILITY_REPORT.md）。
+      - DM8：合法驱动/环境可获得时才启用独立 Profile（dm8-compat）；默认构建不含 DM8。
+    -->
+    <parent>
+        <groupId>com.gwnexusedge</groupId>
+        <artifactId>nexus-edge-backend</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>nexus-edge-compatibility-test</artifactId>
+    <name>GW Nexus Edge Compatibility Test</name>
+    <description>DEV-0002 G-02 外围依赖兼容性测试模块（仅测试用，不进入生产制品）。</description>
+
+    <dependencies>
+        <!-- Spring Web：嵌入式 Web Server（Sa-Token 真实 HTTP 链路 / 组合 Smoke Test） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Spring Data Redis + Lettuce（SB BOM 管理 lettuce-core 7.5.2.RELEASE；RD-1 原则优先） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- MyBatis-Plus：官方 Spring Boot 4 Starter（3.5.17，Maven Central 核验；MP-1） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+        <!--
+          MP-5 分页插件：MyBatis-Plus 3.5.17 将 PaginationInnerInterceptor 移到
+          optional 模块 mybatis-plus-jsqlparser-4.9（SB4 Starter 不传递引入，dependency:tree 实证）。
+          这是使用官方 SB4 Starter 分页能力的必要显式声明，发现记录于 COMPATIBILITY_REPORT.md。
+        -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser-4.9</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+
+        <!-- Sa-Token：官方 Spring Boot 4 Starter（1.45.0，首个 SB4 版本；ST-1）+ Redis 持久化 Dao -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-spring-boot4-starter</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-redis-template</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
+
+        <!-- JDBC 驱动（SB 4.1.0 BOM 管理版本） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Flyway：core + MySQL/PostgreSQL 数据库专用支持模块（SB BOM 管理 12.4.0；FW-1） -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <!--
+          Spring Boot 4.1.0 兼容发现（记录于 COMPATIBILITY_REPORT.md）：
+          Flyway 自动配置已从 spring-boot-autoconfigure 模块化到
+          org.springframework.boot:spring-boot-flyway（SB BOM 管理 4.1.0），必须显式引入，
+          否则 Flyway 不执行启动迁移（真实运行日志：Table 'compat_user' doesn't exist）。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
+
+        <!-- AgentScope 2.0.1（固定核心，agentscope-bom 统一管理）：组合 Smoke Test 的 AgentScope 元素 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-openai</artifactId>
+        </dependency>
+
+        <!-- 测试：Testcontainers（MySQL/PostgreSQL/Redis 真实环境；1.20.6 覆盖理由见根 pom） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <profiles>
+        <!--
+          DM8 兼容验证 Profile（DEV-0002 §10）：
+          - 仅当合法 DM8 官方驱动可用（企业私有 Maven Repository / 受控本地仓库，固定坐标 + SHA-256）时启用。
+          - 默认 clean verify 不含 DM8，仍可完整执行。
+          - 无合法驱动或环境时，DM8 保持 BLOCKED（见 COMPATIBILITY_REPORT.md §DM8）。
+          启用方式（受控命令）：./mvnw -P dm8-compat -pl nexus-edge-compatibility-test test
+        -->
+        <profile>
+            <id>dm8-compat</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>com.dameng</groupId>
+                    <artifactId>DmJdbcDriver18</artifactId>
+                    <version>8.1.3.62</version>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>
