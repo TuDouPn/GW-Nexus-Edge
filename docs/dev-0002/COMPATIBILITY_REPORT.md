@@ -53,16 +53,16 @@
 - **继承 Spring Boot 4.1.0 BOM**：mysql-connector-j 9.7.0、postgresql 42.7.11、lettuce-core 7.5.2.RELEASE、
   flyway-* 12.4.0、spring-boot-flyway 4.1.0、slf4j 2.0.18、logback 1.5.34、netty 4.2.15.Final、
   reactor-bom 2025.0.6、jackson(2) 2.21.4 / jackson(3) 3.1.4。
-- **Testcontainers 2.0.5（恢复 BOM 管理版本）**：
+- **Testcontainers 2.0.5（单一版本来源，评审 P0-1）**：
   - **修正（评审 P0-1）**：此前"2.0.x 移除 mysql/postgresql/junit-jupiter 模块"的结论<b>错误</b>——
     Testcontainers 2.0 按官方迁移规范<b>重命名</b>模块（`junit-jupiter`→`testcontainers-junit-jupiter`、
     `mysql`→`testcontainers-mysql`、`postgresql`→`testcontainers-postgresql`），并将容器类迁移到
     `org.testcontainers.mysql.MySQLContainer` / `org.testcontainers.postgresql.PostgreSQLContainer`
-    （Maven Central 2.0.5 实证，§8.1）。本报告已删除全部"模块移除"与 1.20.6/1.21.4 覆盖结论。
-  - **版本管理**：Testcontainers 版本 = Spring Boot 4.1.0 BOM 的 `testcontainers.version`（2.0.5）。
-    因 Maven 3.9 对 SB BOM 嵌套 import（testcontainers-bom）未传递到 reactor 子模块（实证：version
-    missing），在根 pom dependencyManagement 显式声明 2.0.5（与 BOM 值一致，<b>非覆盖</b>），并保留
-    testcontainers-bom import 供依赖管理参考。
+    （Maven Central 2.0.5 实证，§8.1）。**迁移性质：模块坐标与包名存在破坏性迁移（评审 P1-12）。**
+  - **版本管理（唯一来源）**：根 pom 仅 import `testcontainers-bom:2.0.5`（与 SB 4.1.0 BOM 的
+    testcontainers.version 一致），子模块只声明坐标、不写版本；**无 BOM import 与单独版本并存**
+    （评审 P0-1）。依据：SB 4.1.0 父 POM 嵌套 import 无法为 reactor 子模块管理 Testcontainers 版本
+    （version missing 实证，证据见 docs/dev-0002/evidence/testcontainers-sb-bom-validation.md）。
 - **显式补充（非覆盖）**：`mybatis-plus-jsqlparser-4.9`（分页插件 optional 模块）、`spring-boot-flyway`（SB4 模块化）。
 
 ## 4. 测试矩阵结果（可判定验收用例）
@@ -92,6 +92,22 @@
 - **Jackson 2（2.21.4）与 Jackson 3（3.1.4）共存**：均由 SB 4.1.0 BOM 管理；SB4 默认 Jackson 3，
   Sa-Token 1.45.0 内置 `sa-token-jackson3` 对齐；组合 Smoke Test 实证共存无冲突。
 
+### 5.1 供应链证据（评审 P0-2）
+
+- **CycloneDX SBOM**：`docs/dev-0002/evidence/compatibility-test-sbom.json/.xml`
+  （CycloneDX 1.6，**138 组件**；命令 `org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeBom`）。
+- **依赖漏洞扫描：BLOCKED（漏洞数据不可获得）**——工具 OWASP Dependency-Check Maven Plugin 13.0.0；
+  NVD 数据更新失败（`Invalid API Key, length of 0`，13.x 强制校验 NVD API v2 Key）、OSS Index 不可达
+  （HTTP 000）、本地缓存无 NVD 数据（`NoDataException`）。**不得声明"无已知漏洞"**；
+  完整命令/工具/执行时间/原始错误见 `docs/dev-0002/evidence/dependency-check-evidence.md`。
+  取得 NVD API Key（Secret Provider）或企业漏洞数据源后重扫，并对中高危结果逐项记录
+  disposition（不受影响/已修复/已缓解/接受风险/阻断）——当前无结果可记录。
+- **许可证（POM 声明实证）**：mybatis-plus=Apache-2.0、mysql-connector-j=GPLv2+FOSS-Exception、
+  postgresql=BSD-2-Clause、lettuce=MIT、testcontainers=MIT、agentscope=Apache-2.0、
+  spring-boot=Apache-2.0、reactor-core=Apache-2.0、jakarta.servlet=EPL-2.0；
+  sa-token/flyway/mybatis/slf4j/logback/netty POM 未声明（**G-07 合规基线核验**，本报告不替代）。
+  详见 ADR-0007「依赖治理证据」。
+
 ## 6. DM8 状态（BLOCKED；dm8-compat Profile fail-closed 已验证）
 
 - **已验证事实**：① 驱动坐标 `com.dameng:DmJdbcDriver18` Maven Central 可解析（8.1.2.79~8.1.3.140）；
@@ -102,6 +118,8 @@
   `Dm8CompatibilityTest` **失败**（`fail-closed，禁止静默跳过或假通过`），不静默跳过。
 - **能力边界声明（P1-8）**：当前 dm8-compat Profile **仅验证驱动解析 + fail-closed 检查**；
   **不声称可运行与 MySQL/PostgreSQL 同等级的 MP-6/FW-7/JD 用例**；G-02 保持 PARTIAL。
+- **Secret 边界（P1-13）**：DM8 密码只允许经环境 Secret `DM8_PASSWORD` 或受限 Secret 文件
+  `DM8_PASSWORD_FILE` 注入；**禁止 `-Ddm8.password` 命令行参数**；错误与日志不输出 Secret Value。
 - 后续：取得合法驱动（固定坐标 + SHA-256 + 许可证，不提交 Git）与 DM8 授权环境后，在
   `Dm8CompatibilityTest` 中扩展真实连接/事务/迁移用例。
 
@@ -144,12 +162,18 @@
 
 1. **DM8 兼容认证：BLOCKED（未验证）**——无官方 DM8 服务器镜像/授权环境；仅驱动解析可验证；
    MP-6/FW-7/JD 的 DM8 部分未执行；G-02 不得 PASS。
-2. **MySQL/DM8 双方言生产迁移**（05 §4）未验证 DM8 侧；MySQL 侧 Flyway 迁移已验证。
-3. **Redis Streams XAUTOCLAIM**：spring-data-redis 4.1.0 的 `StreamOperations` 未暴露 XAUTOCLAIM，
+2. **依赖漏洞扫描：BLOCKED（漏洞数据不可获得）**——OWASP Dependency-Check 13.0.0 无法更新 NVD
+   数据（缺 NVD API Key）、OSS Index 不可达、本地缓存无 NVD 数据；**不得声明"无已知漏洞"**；
+   证据见 docs/dev-0002/evidence/dependency-check-evidence.md。取得 NVD Key/数据源后重扫并记录
+   中高危 disposition（当前无结果可记录）。
+3. **MySQL/DM8 双方言生产迁移**（05 §4）未验证 DM8 侧；MySQL 侧 Flyway 迁移已验证。
+4. **Redis Streams XAUTOCLAIM**：spring-data-redis 4.1.0 的 `StreamOperations` 未暴露 XAUTOCLAIM，
    Reclaim 经连接层 XCLAIM 验证（设计允许 XAUTOCLAIM/XCLAIM 二选一）。
-4. **CI（G-06）未建立**：本证据为本地 clean verify；CI 需配置 Docker/colima 与镜像源复现。
-5. **Redisson 未评估**：RD-1 原则优先 Lettuce，无引入需求。
-6. **Sa-Token 仅验证 Harness 级最小语义**（登录/鉴权/Redis 会话恢复），非生产认证。
+5. **CI（G-06）未建立**：本证据为本地 clean verify；CI 需配置 Docker/colima 与镜像源复现。
+6. **Redisson 未评估**：RD-1 原则优先 Lettuce，无引入需求。
+7. **G-07 开源合规基线未建立**：POM 未声明许可证的组件需在 G-07 核验（本报告记录 POM 声明事实，
+   不替代 G-07）。
+8. **Sa-Token 仅验证 Harness 级最小语义**（登录/鉴权/Redis 会话恢复），非生产认证。
 
 ## 10. G-02 建议状态
 
