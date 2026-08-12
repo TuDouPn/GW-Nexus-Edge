@@ -190,7 +190,7 @@ class AgentScopeRound7SemanticsTest {
                     "task-r7-a", "attempt-r7-a",
                     "00000000-0000-0000-0000-000000000000", "",
                     AgentExecutionReference.ExecutionStatus.COMPLETED,
-                    "user-r7", "session-r7"), "恢复 A");
+                    "tenant-R7-A", "workspace-R7-A", "user-r7", "session-r7"), "恢复 A");
             waitForStatus(resume, "task-r7-a",
                     AgentExecutionReference.ExecutionStatus.COMPLETED);
             List<String> requestsA = endpoint.allRequestBodies();
@@ -211,7 +211,7 @@ class AgentScopeRound7SemanticsTest {
                     "task-r7-b", "attempt-r7-b",
                     "00000000-0000-0000-0000-000000000000", "",
                     AgentExecutionReference.ExecutionStatus.COMPLETED,
-                    "user-r7", "session-r7"), "恢复 B");
+                    "tenant-R7-B", "workspace-R7-B", "user-r7", "session-r7"), "恢复 B");
             waitForStatus(resume, "task-r7-b",
                     AgentExecutionReference.ExecutionStatus.COMPLETED);
             List<String> requestsB = endpoint.allRequestBodies();
@@ -307,13 +307,17 @@ class AgentScopeRound7SemanticsTest {
     }
 
     @Test
-    @DisplayName("P1-1：resume 恢复内容与引用逐项校验——篡改/错绑 fail-closed")
+    @DisplayName("P1-1/DEV-0003：resume 恢复内容与引用逐项校验——篡改/错绑 fail-closed（scoped 分区）")
     void resumeRejectsTamperedContext() {
         Path stateDir = workspace.resolve("r7-state-tamper");
         AgentStateStore store = new JsonFileAgentStateStore(stateDir);
+        // DEV-0003 修正：执行上下文保存/读取位于 scoped 分区（与 AgentScope 会话同一隔离域），
+        // 篡改状态必须写入引用所对应的 scoped slot，resume 才会读到并逐项校验 fail-closed。
+        AgentRuntimeIdentityMapper.ScopedIdentity scoped1 = AgentRuntimeIdentityMapper.map(
+                "tenant-R7", "workspace-R7", "user-r7-tamper", "session-r7-tamper");
 
         // 篡改 1：内容 taskId 与键不符（模拟状态错绑/篡改）。
-        store.save("user-r7-tamper", "session-r7-tamper",
+        store.save(scoped1.scopedUserId(), scoped1.scopedSessionId(),
                 ExecutionContextState.storeKey("task-r7-tamper"),
                 new ExecutionContextState("task-OTHER", "workspace-R7", "tenant-R7",
                         "user-r7-tamper", "session-r7-tamper"));
@@ -321,7 +325,9 @@ class AgentScopeRound7SemanticsTest {
                 "taskId");
 
         // 篡改 2：内容 userId 与引用不一致。
-        store.save("user-r7-tamper2", "session-r7-tamper2",
+        AgentRuntimeIdentityMapper.ScopedIdentity scoped2 = AgentRuntimeIdentityMapper.map(
+                "tenant-R7", "workspace-R7", "user-r7-tamper2", "session-r7-tamper2");
+        store.save(scoped2.scopedUserId(), scoped2.scopedSessionId(),
                 ExecutionContextState.storeKey("task-r7-tamper2"),
                 new ExecutionContextState("task-r7-tamper2", "workspace-R7", "tenant-R7",
                         "user-OTHER", "session-r7-tamper2"));
@@ -329,7 +335,9 @@ class AgentScopeRound7SemanticsTest {
                 "userId");
 
         // 篡改 3：内容 sessionId 与引用不一致。
-        store.save("user-r7-tamper3", "session-r7-tamper3",
+        AgentRuntimeIdentityMapper.ScopedIdentity scoped3 = AgentRuntimeIdentityMapper.map(
+                "tenant-R7", "workspace-R7", "user-r7-tamper3", "session-r7-tamper3");
+        store.save(scoped3.scopedUserId(), scoped3.scopedSessionId(),
                 ExecutionContextState.storeKey("task-r7-tamper3"),
                 new ExecutionContextState("task-r7-tamper3", "workspace-R7", "tenant-R7",
                         "user-r7-tamper3", "session-OTHER"));
@@ -346,14 +354,18 @@ class AgentScopeRound7SemanticsTest {
                     taskId, "attempt-" + taskId,
                     "00000000-0000-0000-0000-000000000000", "",
                     AgentExecutionReference.ExecutionStatus.COMPLETED,
-                    userId, sessionId);
+                    "tenant-R7", "workspace-R7", userId, sessionId);
             IllegalStateException ex = assertThrows(IllegalStateException.class,
                     () -> adapter.resumeExecution(ref, "恢复被篡改的上下文"),
                     "恢复内容与引用不一致必须 fail-closed 抛异常");
             assertTrue(ex.getMessage().contains(mismatchField),
                     "错误信息应指出不一致字段 " + mismatchField + "，实际: " + ex.getMessage());
         }
-        store.delete(userId, sessionId, ExecutionContextState.storeKey(taskId));
+        // 清理：删除 scoped 分区中对应键（JsonFileAgentStateStore 支持三参 delete；测试夹具清理）。
+        AgentRuntimeIdentityMapper.ScopedIdentity scoped = AgentRuntimeIdentityMapper.map(
+                "tenant-R7", "workspace-R7", userId, sessionId);
+        store.delete(scoped.scopedUserId(), scoped.scopedSessionId(),
+                ExecutionContextState.storeKey(taskId));
     }
 
     @Test

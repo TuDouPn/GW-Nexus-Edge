@@ -13,14 +13,23 @@ package com.gwnexusedge.nexus.edge.domain.agentscope.port;
  * </ul>
  * 映射由 Nexus Edge 持久化（A-004）。禁止把 agentId 称为"官方 Execution ID"。
  *
+ * <p>恢复 Scope（DEV-0003 修正）：引用必须显式携带
+ * {@code tenantId/workspaceId/userId/sessionId} 四字段（全部 fail-closed 校验），
+ * 恢复时据此重算 AgentScope scoped 身份并从 scoped Redis slot 读取状态；
+ * <b>不得仅凭原始 userId/sessionId 推断 Tenant/Workspace</b>。
+ * 恢复请求只能由正式业务层基于 MySQL 中已授权的 Task/TaskAttempt 数据构造，
+ * 不得信任客户端提交的恢复 Scope（见 {@link AgentExecutionPort#resumeExecution} 与 ADR-0008）。
+ *
  * @param taskId        业务 Task 标识
  * @param taskAttemptId Nexus TaskAttempt UUIDv7（业务主键）
  * @param agentId       AgentScope Agent 实例标识（官方 getAgentId）
  * @param traceId       OpenTelemetry trace id；未采集时为空字符串
  * @param attemptNo     业务尝试序号（TaskAttempt 语义，从 1 开始）
  * @param status        执行状态（互斥终态：COMPLETED/FAILED/CANCELLED）
- * @param userId        执行用户标识（会话恢复）
- * @param sessionId     会话标识（会话恢复）
+ * @param tenantId      租户标识（恢复 Scope，fail-closed）
+ * @param workspaceId   工作空间标识（恢复 Scope，fail-closed）
+ * @param userId        执行用户标识（恢复 Scope）
+ * @param sessionId     会话标识（恢复 Scope）
  */
 public record AgentExecutionReference(
         String taskId,
@@ -29,6 +38,8 @@ public record AgentExecutionReference(
         String traceId,
         int attemptNo,
         ExecutionStatus status,
+        String tenantId,
+        String workspaceId,
         String userId,
         String sessionId) {
 
@@ -62,6 +73,13 @@ public record AgentExecutionReference(
         if (status == null) {
             throw new IllegalArgumentException("status 不允许为 null");
         }
+        // DEV-0003 修正（P0 跨 Scope）：恢复 Scope 四字段全部 fail-closed。
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new IllegalArgumentException("tenantId 不允许为空（恢复 Scope fail-closed）");
+        }
+        if (workspaceId == null || workspaceId.isBlank()) {
+            throw new IllegalArgumentException("workspaceId 不允许为空（恢复 Scope fail-closed）");
+        }
         if (userId == null || userId.isBlank()) {
             throw new IllegalArgumentException("userId 不允许为空");
         }
@@ -74,15 +92,18 @@ public record AgentExecutionReference(
     /** 首尝试构造（attemptNo=1）。 */
     public static AgentExecutionReference firstAttempt(
             String taskId, String taskAttemptId, String agentId, String traceId,
-            ExecutionStatus status, String userId, String sessionId) {
+            ExecutionStatus status, String tenantId, String workspaceId,
+            String userId, String sessionId) {
         return new AgentExecutionReference(
-                taskId, taskAttemptId, agentId, traceId, 1, status, userId, sessionId);
+                taskId, taskAttemptId, agentId, traceId, 1, status,
+                tenantId, workspaceId, userId, sessionId);
     }
 
     /** 以新状态重建引用（终态只允许由执行事件驱动，见 P1-5）。 */
     public AgentExecutionReference withStatus(ExecutionStatus newStatus) {
         return new AgentExecutionReference(
-                taskId, taskAttemptId, agentId, traceId, attemptNo, newStatus, userId, sessionId);
+                taskId, taskAttemptId, agentId, traceId, attemptNo, newStatus,
+                tenantId, workspaceId, userId, sessionId);
     }
 
     /** 以新尝试序号、新 Attempt 标识与新 Agent 标识重建引用（TaskAttempt 语义）。 */
@@ -90,13 +111,13 @@ public record AgentExecutionReference(
             String newTaskAttemptId, String newAgentId, ExecutionStatus newStatus) {
         return new AgentExecutionReference(
                 taskId, newTaskAttemptId, newAgentId, traceId, attemptNo + 1,
-                newStatus, userId, sessionId);
+                newStatus, tenantId, workspaceId, userId, sessionId);
     }
 
     /** 以真实 traceId 重建引用（从 OTel 上下文采集后调用）。 */
     public AgentExecutionReference withTraceId(String realTraceId) {
         return new AgentExecutionReference(
                 taskId, taskAttemptId, agentId, realTraceId == null ? "" : realTraceId,
-                attemptNo, status, userId, sessionId);
+                attemptNo, status, tenantId, workspaceId, userId, sessionId);
     }
 }

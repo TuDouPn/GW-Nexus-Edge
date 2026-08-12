@@ -78,6 +78,16 @@
             <scope>test</scope>
         </dependency>
         <!--
+          DEV-0003：AgentScope 官方 Redis Persistence/Recovery 扩展（agentscope-bom 管理 2.0.1）。
+          - RedisAgentStateStore implements AgentStateStore（Jedis/Lettuce/Redisson 客户端，实证）。
+          - 传递依赖：jedis 7.4.1 / redisson 4.2.0 / lettuce-core 6.4.2.RELEASE（POM 实证）；
+            本 reactor 依赖调解使 lettuce 为 SB BOM 的 7.5.2（兼容性经 DEV-0003 测试验证，评审 0.4-3）。
+        -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-redis</artifactId>
+        </dependency>
+        <!--
           OpenTelemetry SDK（test scope）：DEV-0001 验证真实 Trace ID 采集。
           AgentScope core 已传递 opentelemetry-api 1.61.0 与 reactor-3.1 桥接；
           测试注入 SDK 使 GlobalOpenTelemetry 产生真实 span，从而采集真实 traceId。
@@ -110,4 +120,52 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+              默认排除 Provider Smoke 测试（ProviderSmokeTest）：
+              仅在 provider-smoke 独立 Profile 显式启用时运行（评审 0.4-4）。
+              Profile 显式启用但缺少真实凭证时，该测试 fail-closed（BLOCKED_BY_CREDENTIAL），
+              禁止把跳过写成通过证据。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/ProviderSmokeTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!--
+          Provider Smoke 独立 Profile（DEV-0003 / 评审 0.4-4）：
+          - 显式启用：./mvnw -P provider-smoke -pl nexus-edge-agentscope-adapter test -Dtest=ProviderSmokeTest
+          - 凭证经环境变量注入（DEEPSEEK_API_KEY/DEEPSEEK_BASE_URL 或 OPENAI_API_KEY/OPENAI_BASE_URL），
+            不写入代码/YAML/DB/报告/日志；
+          - 无凭证 → ProviderSmokeTest fail-closed（BLOCKED_BY_CREDENTIAL），不 Mock 冒充。
+        -->
+        <profile>
+            <id>provider-smoke</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <!-- 清空默认 excludes：Profile 显式启用时运行 Provider Smoke 测试 -->
+                            <excludes combine.self="override" />
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

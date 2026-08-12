@@ -107,23 +107,35 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         // P0-2：事件源必须在执行开始前建立（replay 语义，延迟订阅不丢事件）。
         EventStreams<AgentEventEnvelope> eventStreams = EventStreams.replayBounded();
 
-        // P0-1：把 workspaceId/tenantId 作为可持久恢复的执行上下文保存到 State Store，
-        // 键按 Task 隔离（含 taskId），禁止同 user/session 不同 Task 覆盖；
-        // resume 时从 Store 恢复，不依赖 Request 自证。
-        if (stateStore != null) {
-            stateStore.save(request.userId(), request.sessionId(),
-                    ExecutionContextState.storeKey(request.taskId()),
-                    new ExecutionContextState(request.taskId(),
-                            request.workspaceId(), request.tenantId(),
-                            request.userId(), request.sessionId()));
-        }
-
-        // P0-1/P0-4：业务标识映射为 AgentScope 长期 Runtime Identity（稳定/无碰撞/路径安全），
-        // 使 AgentScope AgentState/Memory 按 Tenant/Workspace/User 隔离；
-        // 原始业务标识保留在 RuntimeContext extras。
+        // DEV-0003 修正（P0 跨 Scope）：先计算 AgentScope 长期 Runtime Identity（scoped 身份），
+        // 再用 scoped 分区保存运行期恢复投影——与 AgentScope 会话状态（agent_state）处于同一隔离域。
         AgentRuntimeIdentityMapper.ScopedIdentity scoped = AgentRuntimeIdentityMapper.map(
                 request.tenantId(), request.workspaceId(),
                 request.userId(), request.sessionId());
+
+        // P0-1/DEV-0003：把 workspaceId/tenantId 作为可持久恢复的执行上下文保存到 State Store，
+        // 键按 Task 隔离（含 taskId），禁止同 scoped user/session 不同 Task 覆盖；
+        // 保存分区使用 scopedUserId/scopedSessionId（恢复时从 scoped slot 读取，不依赖 Request 自证）。
+        // 该状态是运行期恢复投影与一致性校验副本；Nexus Task/TaskAttempt 权威源属于 MySQL（ADR-0008）。
+        // C-8：Redis 异常（连接失败等）如实抛出（脱敏，不含 Secret/内部键内容），不伪装成功；
+        // 失败路径不遗留未关闭 Agent / 未结束 span。
+        if (stateStore != null) {
+            try {
+                stateStore.save(scoped.scopedUserId(), scoped.scopedSessionId(),
+                        ExecutionContextState.storeKey(request.taskId()),
+                        new ExecutionContextState(request.taskId(),
+                                request.workspaceId(), request.tenantId(),
+                                request.userId(), request.sessionId()));
+            } catch (RuntimeException e) {
+                TraceSupport.end(trace);
+                agent.close();
+                throw e;
+            }
+        }
+
+        // P0-1/P0-4：业务标识已映射为 scoped 身份（稳定/无碰撞/路径安全），
+        // 使 AgentScope AgentState/Memory 按 Tenant/Workspace/User 隔离；
+        // 原始业务标识保留在 RuntimeContext extras。
         RuntimeContext ctx = RuntimeContext.builder()
                 .userId(scoped.scopedUserId())
                 .sessionId(scoped.scopedSessionId())
@@ -163,6 +175,7 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         AgentExecutionReference ref = AgentExecutionReference.firstAttempt(
                 request.taskId(), taskAttemptId, agentId, traceId,
                 AgentExecutionReference.ExecutionStatus.STARTED,
+                request.tenantId(), request.workspaceId(),
                 request.userId(), request.sessionId());
         log.info("Task {} 已异步启动（taskAttemptId={}, agentId={}, traceId={}）",
                 request.taskId(), taskAttemptId, agentId, traceId);
@@ -212,14 +225,27 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                     "resumeExecution 需要官方 AgentStateStore；当前 Adapter 未配置 State Store");
         }
 
-        // P1-2/P1-1：先读取并完整校验持久化上下文，再解析 Secret/注册模型/创建 Agent——
-        // 失败路径不遗留未关闭 Agent；引用与恢复内容逐项比较（taskId/userId/sessionId），
-        // 内容错绑或篡改时 fail-closed。
-        ExecutionContextState restored = stateStore.get(reference.userId(), reference.sessionId(),
+        // P1-2/P1-1 + DEV-0003 修正（P0 跨 Scope）：
+        // 先按引用携带的 tenantId/workspaceId/userId/sessionId 重算 scoped 身份，
+        // 再从 scoped Redis slot 读取执行上下文——不凭原始 userId/sessionId 推断 Tenant/Workspace，
+        // 也不读取其他 Scope 的状态；恢复内容与引用逐项比较（六字段），缺失/错绑/篡改/跨 Scope 一律 fail-closed。
+        if (reference.tenantId() == null || reference.tenantId().isBlank()
+                || reference.workspaceId() == null || reference.workspaceId().isBlank()
+                || reference.taskId() == null || reference.taskId().isBlank()
+                || reference.userId() == null || reference.userId().isBlank()
+                || reference.sessionId() == null || reference.sessionId().isBlank()) {
+            throw new IllegalStateException(
+                    "resume 失败：引用缺少 taskId/tenantId/workspaceId/userId/sessionId（恢复 Scope fail-closed）");
+        }
+        AgentRuntimeIdentityMapper.ScopedIdentity scoped = AgentRuntimeIdentityMapper.map(
+                reference.tenantId(), reference.workspaceId(),
+                reference.userId(), reference.sessionId());
+
+        ExecutionContextState restored = stateStore.get(scoped.scopedUserId(), scoped.scopedSessionId(),
                         ExecutionContextState.storeKey(reference.taskId()),
                         ExecutionContextState.class)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Task " + reference.taskId() + " 恢复失败：State Store 中无执行上下文（fail-closed）"));
+                        "Task " + reference.taskId() + " 恢复失败：scoped slot 中无执行上下文（fail-closed）"));
         if (restored.getWorkspaceId() == null || restored.getWorkspaceId().isBlank()) {
             throw new IllegalStateException(
                     "Task " + reference.taskId() + " 恢复失败：执行上下文缺少 workspaceId（fail-closed）");
@@ -228,17 +254,22 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
             throw new IllegalStateException(
                     "Task " + reference.taskId() + " 恢复失败：执行上下文缺少 tenantId（fail-closed）");
         }
-        if (reference.taskId() == null || reference.taskId().isBlank()
-                || reference.userId() == null || reference.userId().isBlank()
-                || reference.sessionId() == null || reference.sessionId().isBlank()) {
-            throw new IllegalStateException(
-                    "resume 失败：引用缺少 taskId/userId/sessionId（fail-closed）");
-        }
-        // P1-1：恢复内容与引用逐项一致（taskId/userId/sessionId），错绑/篡改 fail-closed。
+        // DEV-0003 修正：恢复内容与引用逐项一致（taskId/tenantId/workspaceId/userId/sessionId），
+        // 任何缺失、错绑、篡改或跨 Scope 均 fail-closed。
         if (!reference.taskId().equals(restored.getTaskId())) {
             throw new IllegalStateException(
                     "Task " + reference.taskId() + " 恢复失败：恢复上下文 taskId 与引用不一致"
                             + "（restored=" + restored.getTaskId() + "，fail-closed）");
+        }
+        if (!reference.tenantId().equals(restored.getTenantId())) {
+            throw new IllegalStateException(
+                    "Task " + reference.taskId() + " 恢复失败：恢复上下文 tenantId 与引用不一致"
+                            + "（restored=" + restored.getTenantId() + "，fail-closed）");
+        }
+        if (!reference.workspaceId().equals(restored.getWorkspaceId())) {
+            throw new IllegalStateException(
+                    "Task " + reference.taskId() + " 恢复失败：恢复上下文 workspaceId 与引用不一致"
+                            + "（restored=" + restored.getWorkspaceId() + "，fail-closed）");
         }
         if (!reference.userId().equals(restored.getUserId())) {
             throw new IllegalStateException(
@@ -250,8 +281,8 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
                     "Task " + reference.taskId() + " 恢复失败：恢复上下文 sessionId 与引用不一致"
                             + "（restored=" + restored.getSessionId() + "，fail-closed）");
         }
-        String workspaceId = restored.getWorkspaceId();
-        String tenantId = restored.getTenantId();
+        String workspaceId = reference.workspaceId();
+        String tenantId = reference.tenantId();
 
         // P1-2：校验通过后才解析 Secret、注册模型、创建 Agent（失败无遗留）。
         String apiKey = secretResolver.resolve(config.apiKeyReference());
@@ -260,15 +291,13 @@ public class AgentscopeAgentExecutionAdapter implements AgentExecutionPort, Auto
         String newAgentId = resumed.getAgentId();
         String newTaskAttemptId = TaskAttemptId.newUuidV7();
 
-        // 业务 Task 标识沿用原引用的 taskId（贯穿全部 Attempt）；上下文由 Store 恢复。
+        // 业务 Task 标识沿用原引用的 taskId（贯穿全部 Attempt）；上下文由 scoped slot 恢复。
         AgentExecutionRequest resumedRequest = new AgentExecutionRequest(
                 reference.taskId(), reference.userId(), reference.sessionId(),
                 workspaceId, tenantId, List.of("继续之前的会话"));
         EventStreams<AgentEventEnvelope> eventStreams = EventStreams.replayBounded();
-        // P0-1/P0-4：resume 同样使用长期 Runtime Identity（按恢复的 Tenant/Workspace 隔离），
+        // P0-1/P0-4：resume 使用引用携带的 Tenant/Workspace 重算的 scoped 身份，
         // 与 startExecution 的 scoped 标识一致，保证同一会话的历史上下文可恢复。
-        AgentRuntimeIdentityMapper.ScopedIdentity scoped = AgentRuntimeIdentityMapper.map(
-                tenantId, workspaceId, reference.userId(), reference.sessionId());
         RuntimeContext ctx = RuntimeContext.builder()
                 .userId(scoped.scopedUserId())
                 .sessionId(scoped.scopedSessionId())

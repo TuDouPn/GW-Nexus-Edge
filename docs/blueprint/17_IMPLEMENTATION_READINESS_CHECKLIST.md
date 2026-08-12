@@ -23,7 +23,7 @@
 |---|---|---|---|
 | G-01 | 核心依赖兼容 PoC | Java 21、Spring Boot 4.1.0、AgentScope 2.0.1 可共同构建和运行 | **PASS**（2026-08-11，DEV-0001：41/41 真实兼容测试，`./mvnw clean verify`） |
 | G-02 | 外围依赖冻结 | MyBatis-Plus、Sa-Token、JDBC、Redis、Flyway 版本有兼容报告和 ADR | **PARTIAL**（2026-08-12，DEV-0002：MySQL/PostgreSQL/Redis/Sa-Token/MyBatis-Plus/Flyway 通过并冻结（ADR-0007 Proposed）；**DM8 兼容认证未完成（无合法服务器环境）→ 不得 PASS**） |
-| G-03 | AgentScope 能力盘点 | Harness/Core、Provider、Persistence、Recovery、Observability 的实际 API 与边界形成适配清单 | PARTIAL（DEV-0001：能力清单已验证大部分；真实 Provider/Redis 待补，BLOCKED_BY_POC） |
+| G-03 | AgentScope 能力盘点 | Harness/Core、Provider、Persistence、Recovery、Observability 的实际 API 与边界形成适配清单 | PARTIAL（DEV-0001/0003：能力清单已验证大部分；**Redis Persistence/Recovery 已验证（真实 Redis，C-1~C-12）**；**真实 Provider BLOCKED_BY_CREDENTIAL**；Checkpoint 待评审——不夸大为通过） |
 | G-04 | WPS Renderer 门禁 | 免费版的授权、自动化接口、无人值守、模板保真、稳定性和恢复测试通过 | Blocked：待验证 |
 | G-05 | Skill 验收材料 | 脱敏真实数据、三类正式模板、人工认可 Golden Result 全部到位 | Blocked：待试点企业提供 |
 | G-06 | 私有 GitHub CI | 分支保护和完整 Actions 质量门禁已启用 | Pending |
