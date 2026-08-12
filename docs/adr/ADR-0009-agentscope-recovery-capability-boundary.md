@@ -20,7 +20,9 @@ AgentScope 2.0.1 依赖闭包（agentscope-core/harness/extensions-model-openai/
    优雅中断状态、SandboxSnapshot 与 DistributedStore 组合提供**。
 2. **组件职责**：
    - `AgentStateStore`：Session/Agent State 持久化（会话恢复；Redis 实现 DEV-0003 已验证）；
-   - `AgentState`：单次执行状态（会话消息/上下文），跨 call 经 AgentStateStore 恢复（VERIFIED）；
+   - `AgentState`：**按 userId/sessionId 寻址的 per-session 可变状态；每次 call 开始时加载、
+     结束或受支持的中断路径中保存**。不得把 AgentState 描述为 Task、TaskAttempt 或某次模型调用的
+     独立 Execution Checkpoint；
    - `interrupt`（优雅中断）：ReActAgent `interrupt(ctx)` 存在（javap 实证），中断后部分状态保存与
      下一 call 行为**待实证**；
    - `SandboxSnapshot`：沙箱文件系统快照（`persist(InputStream)/restore()`），Local/Remote/Redis 实现；
