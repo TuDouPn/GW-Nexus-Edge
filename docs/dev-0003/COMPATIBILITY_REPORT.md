@@ -13,9 +13,10 @@
 
 | 类别 | 内容 |
 |---|---|
-| **已验证（真实 Redis 12/12）** | C-1~C-12：scoped 写入、跨实例恢复、Tenant/Workspace 隔离、篡改/缺失/损坏 fail-closed、重复恢复新 Attempt、四标识关联、Redis 中断如实失败、不误删共享 Session、受控 Session 删除、共享客户端生命周期、keyPrefix 校验 |
+| **已验证（真实 Redis 12/12）** | C-1~C-12：scoped 写入、跨实例恢复、Tenant/Workspace 隔离、篡改/缺失/损坏 fail-closed、重复恢复唯一 taskAttemptId（attemptNo 依引用递增）、四标识关联、Redis 中断如实失败且异常不含 Secret（sentinel 脱敏）、不误删共享 Session、受控 Session 删除、共享客户端生命周期、keyPrefix 校验 |
 | **已验证（代码/接口实证）** | `agentscope-extensions-redis:2.0.1` 组件与键结构（sources/javap）；`normalizeUser` 仅 null/blank；`AgentStateStore` 三参 delete 为 no-op 默认方法；官方实现不设 TTL |
-| **未验证** | 生产 Redis 客户端终选（Jedis 7.4.1 / Lettuce 7.5.2 均测后定）；Checkpoint（沙箱快照）对 V1 经营分析的适用性（当前不采用）；真实 Provider 调用（无凭证） |
+| **Redis 客户端（评审唯一实现复审 P0）** | **Jedis 7.4.1：VERIFIED**（真实 Redis C-1~C-12，生产验证客户端）；**Lettuce 7.5.2：NOT_VERIFIED**（未来如采用必须单独完成兼容测试并经 ADR 决策；已删除 lettuce 构造入口，禁止 URI 拼接口令） |
+| **未验证** | Checkpoint（沙箱快照）对 V1 经营分析的适用性（当前不采用）；真实 Provider 调用（无凭证） |
 | **BLOCKED** | Provider 真实验证 = **BLOCKED_BY_CREDENTIAL**（无 DEEPSEEK_*/OPENAI_* 凭证；provider-smoke Profile fail-closed 实证） |
 
 ## 2. 官方 API 实证（Maven Central jar + sources，非猜类名）
@@ -29,7 +30,7 @@
 - `DistributedStore`/`RedisDistributedStore`/`RedisSnapshotSpec`/`RedisRemoteSnapshotClient` =
   沙箱快照（Checkpoint，Coding 取向）；V1 经营分析不引入。
 
-## 3. 关键设计落实（P0/P1 修正全部落实）
+## 3. 关键设计落实（P0/P1 修正全部落实 + 唯一实现复审收尾）
 
 1. **跨 Scope（P0）**：`AgentExecutionReference` 增加 tenantId/workspaceId（fail-closed）；
    start 用 scoped 分区保存；resume 按四 scope 字段重算 scoped、从 scoped slot 读取、六字段逐项校验；
@@ -37,18 +38,26 @@
 2. **会话误删除（P0）**：不实现 Task 终态自动 Session 清理；不直接 EXPIRE/操作官方内部键；
    Session 删除归独立生命周期服务（后续工作项）；C-9 验证"Task 完成不误删共享 Session 状态"。
 3. **数据权威边界**：Redis = 运行时持久化机制；MySQL = 长期权威源；ExecutionContextState = 运行期恢复投影。
-4. **文档事实**：normalizeUser 语义、三参 delete no-op、GenericContainer、客户端组合测试、Provider 独立 Profile、
-   基线 HEAD=`8b79ecb` 均已按评审修正。
+4. **唯一实现复审收尾**：
+   - **删除 Lettuce 构造入口**（避免未验证且存在 Secret URI 拼接风险）；生产验证客户端仅
+     **Jedis 7.4.1（VERIFIED）**；Lettuce 7.5.2 NOT_VERIFIED（未来单独测试 + ADR）；
+   - **C-8 增加 sentinel Secret 脱敏断言**（连接失败异常链不含 Secret）；
+   - 修复 `agentscope-extensions-redis` 重复依赖（只保留一处 compile）；
+   - **Provider 原子配置选择**（A~E 规则，禁止跨 Provider 混配）+ 纯配置单元测试；
+   - **C-6 如实口径**：Adapter 每次 resume 产生唯一 taskAttemptId；attemptNo 依传入引用递增；
+     同一旧引用重复调用得到相同 attemptNo 但不同 taskAttemptId；真正的并发串行化、幂等与连续
+     Attempt 编号由后续 MySQL Task Application Service 负责——本 Adapter 不声称已完成业务 Task 幂等持久化。
 
 ## 4. 测试证据
 
 | 测试类 | 用例 | 结果 |
 |---|---|---|
-| RedisPersistenceRecoveryTest（DEV-0003 新增） | 12（C-1~C-12） | ✅ 真实 Redis（Testcontainers GenericContainer redis:7.4.2） |
+| RedisPersistenceRecoveryTest（DEV-0003 新增） | 12（C-1~C-12） | ✅ 真实 Redis（Testcontainers GenericContainer redis:7.4.2；Jedis 7.4.1） |
+| ProviderSmokeConfigTest（评审唯一实现复审新增） | 7 | ✅ 原子配置选择（DeepSeek/OpenAI/部分缺失/双组未选择/不混配/不含 Secret） |
 | ProviderSmokeTest（provider-smoke Profile 专属） | 1 | BLOCKED_BY_CREDENTIAL（fail-closed 实证：缺凭证 → 测试失败，不冒充通过） |
 | 既有 AgentScope 测试（DEV-0001，含 firstAttempt 适配） | 41 | ✅ 无回归 |
 | DEV-0002 compatibility-test | 14 | ✅ 无回归 |
-| **合计（默认构建）** | **67** | **0 失败** |
+| **合计（默认构建）** | **74** | **0 失败** |
 
 `./mvnw clean verify`（JDK 21）：EXIT=0，BUILD SUCCESS，DuplicateJsonObject 警告 0。
 

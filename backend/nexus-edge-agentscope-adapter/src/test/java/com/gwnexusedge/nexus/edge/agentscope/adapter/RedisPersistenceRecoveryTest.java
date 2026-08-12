@@ -267,7 +267,7 @@ class RedisPersistenceRecoveryTest {
     }
 
     @Test
-    @DisplayName("C-6：重复恢复产生新 Attempt（不宣称 Adapter 持久化旧 Attempt）")
+    @DisplayName("C-6：重复恢复产生唯一 taskAttemptId；attemptNo 依传入引用递增（业务幂等归 MySQL 服务）")
     void repeatedResumeProducesNewAttempts() throws Exception {
         try (AgentscopeAgentExecutionAdapter adapter = newAdapter(factory.stateStore())) {
             AgentExecutionReference first = adapter.startExecution(new AgentExecutionRequest(
@@ -284,10 +284,16 @@ class RedisPersistenceRecoveryTest {
             AgentExecutionReference r2 = adapter.resumeExecution(ref, "第二次恢复");
             assertNotNull(r1);
             assertNotNull(r2);
-            assertEquals(2, r1.attemptNo(), "第一次恢复应为第 2 次尝试");
-            assertEquals(2, r2.attemptNo(), "第二次恢复（同引用）也应产生新 Attempt");
+            // 如实口径（评审唯一实现复审 C-6）：
+            // - Adapter 每次 resume 产生唯一 taskAttemptId；
+            // - attemptNo 依据传入引用递增（同一旧引用重复调用得到相同 attemptNo）；
+            // - 真正的并发串行化、幂等与连续 Attempt 编号由后续 MySQL Task Application Service 负责，
+            //   本 Adapter 不声称已完成业务 Task 幂等持久化。
+            assertEquals(2, r1.attemptNo(), "第一次恢复的 attemptNo 依据引用 attemptNo=1 递增为 2");
+            assertEquals(2, r2.attemptNo(), "同一旧引用重复调用得到相同 attemptNo（2）");
+            assertEquals(r1.attemptNo(), r2.attemptNo(), "同一引用两次恢复 attemptNo 应相同");
             assertNotEquals(r1.taskAttemptId(), r2.taskAttemptId(),
-                    "每次恢复必须产生新的 taskAttemptId（新 Attempt）");
+                    "每次恢复必须产生唯一 taskAttemptId（新 Attempt）");
             assertNotEquals(r1.agentId(), r2.agentId(), "每次恢复必须产生新 Agent 实例标识");
         }
     }
@@ -309,17 +315,28 @@ class RedisPersistenceRecoveryTest {
     }
 
     @Test
-    @DisplayName("C-8：Redis 中断如实失败（不伪装成功）")
+    @DisplayName("C-8：Redis 中断如实失败且异常不含 Secret（脱敏，不伪装成功）")
     void redisDownFailsOpenly() {
-        // 指向未监听端口的 Redis（真实连接失败；非 Mock）。
+        // 唯一 sentinel Secret（评审唯一实现复审 P0）：连接失败异常及可捕获诊断不得包含该 Secret。
+        String sentinel = "C8-SENTINEL-SECRET-" + System.nanoTime();
+        // 指向未监听端口的 Redis（真实连接失败；非 Mock）。口令不拼接进 URI。
         RedisAgentStateStoreFactory deadFactory =
-                RedisAgentStateStoreFactory.jedis(ENV, "127.0.0.1", 59999, null);
+                RedisAgentStateStoreFactory.jedis(ENV, "127.0.0.1", 59999, sentinel);
         try (AgentscopeAgentExecutionAdapter adapter = newAdapter(deadFactory.stateStore())) {
-            assertThrows(RuntimeException.class,
+            RuntimeException ex = assertThrows(RuntimeException.class,
                     () -> adapter.startExecution(new AgentExecutionRequest(
                             "task-c8", "user-c8", "session-c8", "ws-c8", "tn-c8",
                             List.of("C-8 Redis 中断"))),
                     "Redis 中断时 startExecution 必须如实失败（不伪装成功）");
+            // 脱敏断言：整条异常链（消息+原因）不得包含 sentinel Secret；只比较是否包含，不输出 Secret 值。
+            boolean leak = false;
+            for (Throwable t = ex; t != null; t = t.getCause()) {
+                if (t.getMessage() != null && t.getMessage().contains(sentinel)) {
+                    leak = true;
+                    break;
+                }
+            }
+            assertFalse(leak, "Redis 连接失败异常不得包含 Secret（sentinel 脱敏断言）");
         } finally {
             deadFactory.close();
         }

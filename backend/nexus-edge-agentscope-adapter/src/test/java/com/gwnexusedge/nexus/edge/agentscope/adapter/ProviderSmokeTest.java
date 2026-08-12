@@ -40,18 +40,12 @@ class ProviderSmokeTest {
     private static final String MODEL_ID = "openai:provider-smoke";
 
     @Test
-    @DisplayName("P-1：真实 Provider 调用或 BLOCKED_BY_CREDENTIAL（不 Mock 冒充）")
+    @DisplayName("P-1：真实 Provider 调用或 BLOCKED_BY_CREDENTIAL（原子配置选择，不 Mock 冒充）")
     void realProviderSmokeOrBlockedByCredential() throws Exception {
-        String apiKey = firstNonBlank(System.getenv("DEEPSEEK_API_KEY"), System.getenv("OPENAI_API_KEY"));
-        String baseUrl = firstNonBlank(System.getenv("DEEPSEEK_BASE_URL"), System.getenv("OPENAI_BASE_URL"));
-        String modelName = firstNonBlank(System.getenv("DEEPSEEK_MODEL"), "provider-smoke-model");
-
-        if (apiKey == null || baseUrl == null) {
-            fail("BLOCKED_BY_CREDENTIAL: 未配置真实 Provider 凭证——"
-                    + "需要环境变量 DEEPSEEK_API_KEY/DEEPSEEK_BASE_URL（DeepSeek）或 "
-                    + "OPENAI_API_KEY/OPENAI_BASE_URL（企业 OpenAI-compatible）；"
-                    + "未提供真实凭证时不得以跳过冒充通过（API Key 值不输出）");
-        }
+        // 原子 Provider 配置选择（评审唯一实现复审三）：禁止跨 Provider 字段混配；
+        // 任何 BLOCKED 场景抛 IllegalArgumentException（消息只含变量名，不含 Secret Value）→ 测试 fail-closed。
+        ProviderSmokeConfig.ProviderConfig cfg = ProviderSmokeConfig.resolve(System.getenv());
+        // 到达此步说明存在完整凭证（API Key 仅运行期经环境注入；不打印、不断言 Key 值）。
 
         // 真实模型注册（API Key 仅运行期经环境注入；不打印、不断言 Key 值）。
         OpenAIModelProvider provider = new OpenAIModelProvider();
@@ -59,9 +53,9 @@ class ProviderSmokeTest {
             fail("模型标识 " + MODEL_ID + " 不被 OpenAI Provider 支持");
         }
         ModelRegistry.register(MODEL_ID, OpenAIChatModel.builder()
-                .apiKey(apiKey)
-                .modelName(modelName)
-                .baseUrl(baseUrl)
+                .apiKey(cfg.apiKey())
+                .modelName(cfg.model())
+                .baseUrl(cfg.baseUrl())
                 .build());
 
         Path workspace = Files.createTempDirectory("nexus-edge-provider-smoke-ws");
@@ -91,13 +85,5 @@ class ProviderSmokeTest {
         } finally {
             agent.close();
         }
-    }
-
-    /** 返回首个非空白值（null 表示两者皆缺失）。 */
-    private static String firstNonBlank(String a, String b) {
-        if (a != null && !a.isBlank()) {
-            return a;
-        }
-        return b;
     }
 }

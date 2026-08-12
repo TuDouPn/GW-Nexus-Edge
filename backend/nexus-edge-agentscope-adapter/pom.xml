@@ -39,15 +39,6 @@
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-openai</artifactId>
         </dependency>
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-redis</artifactId>
-            <!--
-              Redis 状态存储扩展已核验 2.0.1 存在。
-              恢复边界（OQ-007）先由能力矩阵建立结论，再决定是否启用 Redis 测试；
-              参见 RecoveryCapabilityReportTest 与 docs/blueprint/08 §9、22 §6。
-            -->
-        </dependency>
 
         <!-- Spring Boot 用于 G-01：验证 Harness/Core 可内嵌于 Spring Boot 4.1.0 上下文。 -->
         <dependency>
@@ -78,10 +69,11 @@
             <scope>test</scope>
         </dependency>
         <!--
-          DEV-0003：AgentScope 官方 Redis Persistence/Recovery 扩展（agentscope-bom 管理 2.0.1）。
-          - RedisAgentStateStore implements AgentStateStore（Jedis/Lettuce/Redisson 客户端，实证）。
-          - 传递依赖：jedis 7.4.1 / redisson 4.2.0 / lettuce-core 6.4.2.RELEASE（POM 实证）；
-            本 reactor 依赖调解使 lettuce 为 SB BOM 的 7.5.2（兼容性经 DEV-0003 测试验证，评审 0.4-3）。
+          DEV-0003：AgentScope 官方 Redis Persistence/Recovery 扩展（agentscope-bom 管理 2.0.1，唯一声明）。
+          - RedisAgentStateStore implements AgentStateStore（Jedis/Lettuce/Redisson 客户端，javap 实证）。
+          - 传递依赖：jedis 7.4.1 / redisson 4.2.0 / lettuce-core 6.4.2.RELEASE（POM 实证）。
+          - 生产验证客户端（评审唯一实现复审 P0）：仅 Jedis 7.4.1 经真实 Redis C-1~C-12 验证（VERIFIED）；
+            Lettuce 7.5.2 未验证（NOT_VERIFIED），未来如采用必须单独完成兼容测试并经 ADR 决策。
         -->
         <dependency>
             <groupId>io.agentscope</groupId>

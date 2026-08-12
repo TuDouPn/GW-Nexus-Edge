@@ -15,9 +15,10 @@ G-03（AgentScope 能力盘点）与 OQ-007（Persistence/Recovery 边界）要�
 ## 决策
 
 1. **官方组件**：采用 `io.agentscope:agentscope-extensions-redis:2.0.1` 的
-   `RedisAgentStateStore`（实现 `AgentStateStore`，与 JsonFile 同接口 drop-in）；
-   Redis 客户端（Jedis 7.4.1 / Lettuce 7.5.2）**均经真实 Redis 组合测试后再决定生产客户端**，
-   未经测试不提前冻结（评审 0.4-3）。本项测试默认使用 Jedis（扩展官方直接依赖，独立于 SB BOM）。
+   `RedisAgentStateStore`（实现 `AgentStateStore`，与 JsonFile 同接口 drop-in）。
+   **生产验证客户端（评审唯一实现复审 P0）：仅 Jedis 7.4.1 经真实 Redis C-1~C-12 验证（VERIFIED）**；
+   Lettuce 7.5.2 未验证（NOT_VERIFIED），未来如采用必须单独完成兼容测试并经 ADR 决策；
+   **不提供 Lettuce 构造入口，Redis 口令不拼接进 URI**（避免 Secret 出现在连接 URI/日志）。
 2. **恢复 Scope（P0 修正）**：`AgentExecutionReference` 显式携带 `tenantId/workspaceId/userId/sessionId`
    （全部 fail-closed）；`startExecution` 先计算 scoped 身份再用 scoped 分区保存执行上下文；
    `resume` 依据四字段重算 scoped 身份、从 scoped Redis slot 读取，并逐项校验
@@ -41,11 +42,17 @@ G-03（AgentScope 能力盘点）与 OQ-007（Persistence/Recovery 边界）要�
 
 ## 验证
 
-- `./mvnw clean verify`：全绿（既有 41 + DEV-0003 新增 12 + DEV-0002 兼容 14）。
-- 真实 Redis（Testcontainers GenericContainer redis:7.4.2）：C-1~C-12 全部通过——
-  scoped 写入、跨实例恢复、Tenant/Workspace 隔离、篡改/缺失/损坏 fail-closed、重复恢复新 Attempt、
-  标识关联、Redis 中断如实失败、不误删共享 Session、受控 Session 删除、共享客户端生命周期、keyPrefix 校验。
+- `./mvnw clean verify`：全绿（既有 41 + DEV-0003 新增 12 + Provider 配置 7 + DEV-0002 兼容 14）。
+- 真实 Redis（Testcontainers GenericContainer redis:7.4.2，Jedis 7.4.1）：C-1~C-12 全部通过——
+  scoped 写入、跨实例恢复、Tenant/Workspace 隔离、篡改/缺失/损坏 fail-closed、重复恢复唯一
+  taskAttemptId（attemptNo 依引用递增）、标识关联、Redis 中断如实失败且异常不含 Secret（sentinel 脱敏）、
+  不误删共享 Session、受控 Session 删除、共享客户端生命周期、keyPrefix 校验。
+- Provider 原子配置选择：ProviderSmokeConfigTest 7 用例（DeepSeek/OpenAI 完整组、部分缺失、
+  双组未选择、不跨 Provider 混配、错误不含 Secret Value）。
 - Provider Smoke：provider-smoke Profile 显式启用且无凭证 → 测试失败（BLOCKED_BY_CREDENTIAL 证据）。
+- **C-6 如实口径**：Adapter 每次 resume 产生唯一 taskAttemptId；attemptNo 依传入引用递增；
+  同一旧引用重复调用得到相同 attemptNo 但不同 taskAttemptId；真正的并发串行化、幂等与连续
+  Attempt 编号由后续 MySQL Task Application Service 负责——本 Adapter 不声称已完成业务 Task 幂等持久化。
 
 ## 影响
 

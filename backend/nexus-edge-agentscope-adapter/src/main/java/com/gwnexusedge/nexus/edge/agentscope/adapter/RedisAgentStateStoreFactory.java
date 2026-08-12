@@ -18,29 +18,27 @@ import redis.clients.jedis.JedisPooled;
  *   <li>Redis 客户端生命周期：{@link RedisAgentStateStore} 由本工厂持有并在
  *       {@link #close()} 统一关闭（null-safe）；<b>禁止每次 Task 关闭共享 Client</b>（C-11）；</li>
  *   <li>本工厂不执行 Task 终态自动 Session 清理（Session 删除归独立生命周期服务，
- *       本 Work Item 不实现）；不操作/解析 AgentScope 官方内部键（ADR-0008）。</li>
+ *       本 Work Item 不实现）；不操作/解析 AgentScope 官方内部键（ADR-0008）；</li>
+ *   <li><b>Redis 口令不拼接进 URI</b>（避免 Secret 出现在连接 URI/日志）；经 Jedis
+ *       {@code JedisPooled(host, port, user, password)} 单独传参（评审唯一实现复审 P0）。</li>
  * </ul>
  *
- * <p>生产客户端选择（评审 0.4-3）：Jedis 7.4.1 与 Spring Boot 管理的 Lettuce 7.5.2
- * 均需通过真实 Redis 组合测试后再决定；本实现同时提供两种构建入口，默认 Jedis，
- * 最终选择以 COMPATIBILITY_REPORT.md 的测试证据为准。
+ * <p>生产客户端（评审唯一实现复审 P0）：<b>仅 Jedis 7.4.1 经真实 Redis C-1~C-12 验证（VERIFIED）</b>；
+ * Lettuce 7.5.2 未验证（NOT_VERIFIED），未来如采用必须单独完成兼容测试并经 ADR 决策。
  */
 public final class RedisAgentStateStoreFactory implements AutoCloseable {
 
     /** keyPrefix 环境段允许字符集（C-12：小写字母/数字/连字符，防跨环境污染）。 */
     private static final Pattern ENV_NAME_PATTERN = Pattern.compile("[a-z0-9-]{1,32}");
 
-    /** 默认 Redis 端口。 */
-    public static final int DEFAULT_REDIS_PORT = 6379;
-
     private final RedisAgentStateStore store;
     private final AutoCloseable client;
 
     /**
-     * 私有构造：经 {@link #jedis(...)} / {@link #lettuce(...)} 创建。
+     * 私有构造：经 {@link #jedis(...)} 创建。
      *
      * @param store  官方 RedisAgentStateStore
-     * @param client 底层客户端（Jedis/Lettuce），由本工厂统一关闭
+     * @param client 底层 Jedis 客户端，由本工厂统一关闭
      */
     private RedisAgentStateStoreFactory(RedisAgentStateStore store, AutoCloseable client) {
         this.store = store;
@@ -48,7 +46,10 @@ public final class RedisAgentStateStoreFactory implements AutoCloseable {
     }
 
     /**
-     * 使用 Jedis 客户端构建（扩展官方直接依赖 jedis 7.4.1，独立于 SB BOM 的 Lettuce）。
+     * 使用 Jedis 客户端构建（生产验证客户端；真实 Redis C-1~C-12 已验证，VERIFIED）。
+     *
+     * <p>口令经 {@code JedisPooled(host, port, user, password)} 单独传参，
+     * <b>不拼接进连接 URI</b>（避免 Secret 出现在 URI/日志，评审 P0）。
      *
      * @param environment 环境名（keyPrefix 环境段；C-12 校验允许字符）
      * @param host        Redis 主机
@@ -66,34 +67,6 @@ public final class RedisAgentStateStoreFactory implements AutoCloseable {
                 .jedisClient(jedis)
                 .build();
         return new RedisAgentStateStoreFactory(store, jedis);
-    }
-
-    /**
-     * 使用 Lettuce 客户端构建（Spring Boot BOM 管理 lettuce-core 7.5.2）。
-     *
-     * <p>注意：agentscope-extensions-redis POM 声明 lettuce 6.4.2.RELEASE；本 reactor 依赖
-     * 调解为 SB BOM 的 7.5.2。该组合的真实兼容性必须经测试验证后再作为生产客户端（评审 0.4-3）。
-     *
-     * @param environment 环境名（keyPrefix 环境段；C-12 校验允许字符）
-     * @param host        Redis 主机
-     * @param port        Redis 端口
-     * @param password    口令（Secret Reference 解析后的运行期值；null 表示无口令）
-     * @return 工厂（持有共享 Client，随 Adapter close 统一关闭）
-     */
-    public static RedisAgentStateStoreFactory lettuce(String environment, String host, int port, String password) {
-        String keyPrefix = keyPrefix(environment);
-        io.lettuce.core.RedisClient redisClient;
-        if (password == null || password.isBlank()) {
-            redisClient = io.lettuce.core.RedisClient.create("redis://" + host + ":" + port);
-        } else {
-            redisClient = io.lettuce.core.RedisClient.create(
-                    "redis://:" + password + "@" + host + ":" + port);
-        }
-        RedisAgentStateStore store = RedisAgentStateStore.builder()
-                .keyPrefix(keyPrefix)
-                .lettuceClient(redisClient)
-                .build();
-        return new RedisAgentStateStoreFactory(store, redisClient);
     }
 
     /**
@@ -124,7 +97,7 @@ public final class RedisAgentStateStoreFactory implements AutoCloseable {
     }
 
     /**
-     * 关闭共享 Redis 客户端（null-safe；仅在 Adapter 整体关闭时调用，不随 Task 关闭）。
+     * 关闭共享 Jedis 客户端（null-safe；仅在 Adapter 整体关闭时调用，不随 Task 关闭）。
      */
     @Override
     public void close() {
