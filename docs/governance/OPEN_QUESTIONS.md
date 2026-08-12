@@ -14,7 +14,7 @@ Open Question 不是 TODO。问题一旦解决，必须落入 Accepted ADR 或�
 | OQ-004 | 分片上传会话和 Part 的权威存储、续传期限、幂等与崩溃恢复模型是什么？ | Resource、Upload API、MySQL、Redis | OPEN | Phase 2 上传实现 |
 | OQ-005 | 最终批准是否原子触发发布？若批准与发布分离，默认流程、权限、重复调用和失败恢复如何定义？ | Approval、Artifact State、API、Audit | OPEN | Phase 4 最终审批 |
 | OQ-006 | DOCX/PPTX/XLSX 多输出部分成功时，Task、Artifact、RenderJob 的聚合状态、审核准入和重试粒度如何定义？ | Task、Artifact、Renderer、Notification | OPEN | Phase 4 Renderer |
-| OQ-007 | AgentScope 2.0.1 官方 Persistence/Recovery 的具体组件、存储、事务、备份和 Nexus Edge Adapter 边界是什么？ | AgentScope、Task、Operations、Backup | BLOCKED_BY_POC | Milestone 0 / Phase 3 |
+| OQ-007 | AgentScope 2.0.1 官方 Persistence/Recovery 的具体组件、存储、事务、备份和 Nexus Edge Adapter 边界是什么？ | AgentScope、Task、Operations、Backup | **PARTIAL（Redis Persistence/Recovery 已解决，决策链接 ADR-0008；AgentScope Checkpoint 待评审）** | Milestone 0 / Phase 3 |
 | OQ-008 | Host Agent 的签名 Intent Schema、mTLS 身份签发/轮换、Nonce 防重放、最小操作集合与失联处置契约如何冻结？ | Coding Deployment、Host Agent、PKI、Audit | BLOCKED_BY_POC | Coding Phase 2 Host Pool |
 | OQ-009 | `ORGANIZATION_ONLY` 应用跨平台域名和用户自定义域名时，Application Gateway 的企业身份跳转、Session/Cookie 域、安全属性与应用授权协议如何定义？ | Coding Deployment、IAM、Gateway、API | OPEN | Coding Phase 3 Production Access |
 | OQ-010 | Harbor 当前目标版本对 OCI Referrers、Cosign 签名、SBOM、Provenance 与不可变 Digest 的实际兼容边界是什么？ | Supply Chain、Registry、CI/CD | BLOCKED_BY_POC | Coding Phase 2 Build Worker |

@@ -1,8 +1,13 @@
 # ADR-0008 — AgentScope Redis Persistence/Recovery 接入与边界
 
-> 状态：**Proposed（草案，待产品架构负责人批准）**
-> 日期：2026-08-12（草案）
-> 决策人：（待产品架构负责人）
+> 状态：**Accepted（2026-08-12 经产品架构负责人批准）**
+> 日期：2026-08-12（草案）；2026-08-12（批准）
+> 决策人：产品架构负责人（2026-08-12 批准）
+> 批准范围：Redis Persistence/Recovery 接入（`agentscope-extensions-redis` + `RedisAgentStateStore`，
+> Jedis 7.4.1 VERIFIED）；恢复 Scope 契约（AgentExecutionReference 携带四 scope 字段、scoped 分区、
+> 六字段 fail-closed 校验、恢复请求仅来自 MySQL 授权数据）；数据权威边界（Redis=运行时投影，
+> MySQL=权威源）；Session 删除归独立生命周期服务；Provider 边界保持 BLOCKED_BY_CREDENTIAL；
+> AgentScope Checkpoint 仍待评审。
 > 关联决策/Issue：DEV-0003、G-03、OQ-007
 > 关联 ADR：ADR-0001、ADR-0006（核心版本固定）；ADR-0007（外围依赖冻结，Proposed）
 
