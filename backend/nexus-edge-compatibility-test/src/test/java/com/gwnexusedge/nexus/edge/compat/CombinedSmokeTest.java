@@ -16,7 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -44,7 +44,7 @@ class CombinedSmokeTest {
 
     /** 固定版本 MySQL 镜像（MyBatis-Plus + Flyway + JDBC）。 */
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.5");
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.5");
 
     /** 固定版本 Redis 镜像（Spring Data Redis + Lettuce）。 */
     @Container

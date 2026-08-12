@@ -12,8 +12,8 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -36,11 +36,11 @@ class JdbcCompatibilityTest {
 
     /** 固定版本 MySQL 镜像。 */
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.5");
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.5");
 
     /** 固定版本 PostgreSQL 镜像。 */
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.6");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16.6");
 
     /**
      * MySQL：连接、事务提交与回滚、UTC 时间、基础类型映射。

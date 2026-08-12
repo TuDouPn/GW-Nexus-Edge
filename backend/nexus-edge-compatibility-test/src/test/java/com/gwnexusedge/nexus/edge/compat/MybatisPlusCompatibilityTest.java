@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -36,7 +36,7 @@ class MybatisPlusCompatibilityTest {
 
     /** 固定版本 MySQL 镜像（JD-2：报告中记录镜像 Digest）。 */
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.5");
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.5");
 
     /**
      * 把 Testcontainers MySQL 连接注入 Spring 上下文（真实数据源）。

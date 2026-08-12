@@ -8,12 +8,11 @@ import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,11 +33,11 @@ class FlywayCompatibilityTest {
 
     /** 固定版本 MySQL 镜像。 */
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.5");
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.5");
 
     /** 固定版本 PostgreSQL 镜像。 */
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.6");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16.6");
 
     /**
      * 在真实 MySQL 上验证 migrate / validate / 幂等 / checksum 失败。
@@ -103,10 +102,14 @@ class FlywayCompatibilityTest {
     }
 
     /**
-     * FW-6：迁移目录隔离——MySQL/PostgreSQL 各自独立目录，互不借用。
+     * FW-6：迁移目录隔离——MySQL/PostgreSQL 各自独立目录。
+     *
+     * <p>DM8 迁移目录隔离不由本测试断言：当前无 DM8 环境时，本测试只验证 MySQL/PostgreSQL
+     * 独立目录；DM8 迁移目录必须独立维护（db/migration/dm8），其隔离性由未来真实 DM8 测试证明
+     * （评审 P1-9：删除"DM8 迁移文件存在即失败"的反向断言）。
      */
     @Test
-    @DisplayName("FW-6：MySQL/PostgreSQL 迁移目录隔离（DM8 独立目录约定）")
+    @DisplayName("FW-6：MySQL/PostgreSQL 迁移目录隔离")
     void migrationDirectoriesAreIsolated() {
         // MySQL 迁移目录存在且可加载（application-mysql Profile 的 Flyway locations）。
         boolean mysqlDir = getClass().getClassLoader()
@@ -117,13 +120,5 @@ class FlywayCompatibilityTest {
         boolean postgresDir = getClass().getClassLoader()
                 .getResource("db/migration/postgresql/V1__create_compat_user.sql") != null;
         assertTrue(postgresDir, "PostgreSQL 迁移目录 db/migration/postgresql 应存在并包含 V1 迁移");
-
-        // DM8：禁止借用 MySQL/PostgreSQL 迁移结果——DM8 迁移必须独立维护于 db/migration/dm8
-        // （FW-7）；当前 DM8 BLOCKED（无合法驱动/环境），不存在借用 MySQL 的迁移文件，
-        // 证据见 COMPATIBILITY_REPORT.md。DM8 验证启动时必须新建独立迁移目录，不得复用 mysql 目录。
-        boolean dm8BorrowsMysql = getClass().getClassLoader()
-                .getResource("db/migration/dm8/V1__create_compat_user.sql") != null;
-        assertFalse(dm8BorrowsMysql,
-                "DM8 不得借用 MySQL 迁移文件（FW-7）；DM8 迁移目录必须独立维护");
     }
 }

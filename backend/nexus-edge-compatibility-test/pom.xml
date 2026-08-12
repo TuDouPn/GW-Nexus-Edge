@@ -11,9 +11,11 @@
       - 不进入生产镜像；不被任何生产模块依赖；不包含正式业务功能。
       - 版本选择规则（DEV-0002 §12）：Spring Boot 4.1.0 BOM 优先；
         官方 Spring Boot 4 Starter 优先；不以「最新版本」作为选择依据。
-      - Testcontainers 使用 1.20.6（覆盖 BOM 2.0.5 的明确兼容原因见根 pom 注释与
-        docs/dev-0002/COMPATIBILITY_REPORT.md）。
-      - DM8：合法驱动/环境可获得时才启用独立 Profile（dm8-compat）；默认构建不含 DM8。
+      - Testcontainers 2.0.5 由 Spring Boot 4.1.0 BOM 管理（坐标与包名按 2.0 官方迁移规范：
+        testcontainers-junit-jupiter / testcontainers-mysql / testcontainers-postgresql；
+        容器类 org.testcontainers.mysql.MySQLContainer / org.testcontainers.postgresql.PostgreSQLContainer）。
+      - DM8：独立 Profile（dm8-compat）提供真实可执行验证入口（驱动解析 + fail-closed 连接检查）；
+        当前无 DM8 授权环境时 Profile 仅验证驱动解析，G-02 保持 PARTIAL。
     -->
     <parent>
         <groupId>com.gwnexusedge</groupId>
@@ -116,7 +118,8 @@
             <artifactId>agentscope-extensions-model-openai</artifactId>
         </dependency>
 
-        <!-- 测试：Testcontainers（MySQL/PostgreSQL/Redis 真实环境；1.20.6 覆盖理由见根 pom） -->
+        <!-- 测试：Testcontainers 2.0.5（SB 4.1.0 BOM 管理版本；坐标与包名按 2.0 官方迁移规范，
+             见根 pom 注释与 COMPATIBILITY_REPORT.md） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -129,28 +132,49 @@
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>mysql</artifactId>
+            <artifactId>testcontainers-mysql</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
+            <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <!--
+              默认排除 DM8 测试（Dm8CompatibilityTest 仅在 dm8-compat Profile 显式启用时运行）。
+              Profile 显式启用但缺少 DM8 endpoint/credential 时，该测试 fail-closed（P1-7），
+              禁止静默跳过或假通过。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/Dm8CompatibilityTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
     <profiles>
         <!--
-          DM8 兼容验证 Profile（DEV-0002 §10）：
-          - 仅当合法 DM8 官方驱动可用（企业私有 Maven Repository / 受控本地仓库，固定坐标 + SHA-256）时启用。
-          - 默认 clean verify 不含 DM8，仍可完整执行。
-          - 无合法驱动或环境时，DM8 保持 BLOCKED（见 COMPATIBILITY_REPORT.md §DM8）。
-          启用方式（受控命令）：./mvnw -P dm8-compat -pl nexus-edge-compatibility-test test
+          DM8 兼容验证 Profile（DEV-0002 §10 / 评审 P1）：
+          - 显式启用：./mvnw -P dm8-compat -pl nexus-edge-compatibility-test test
+          - 提供 DM8 官方驱动（Maven Central 可解析坐标）并运行 Dm8CompatibilityTest；
+          - 该测试：① 验证驱动类可解析（无需服务器）；② 读取 dm8.url/dm8.username/dm8.password
+            （或 DM8_URL/DM8_USERNAME/DM8_PASSWORD）——缺失则 fail-closed（测试失败）；
+          - 当前无 DM8 授权环境：Profile 仅验证驱动解析，不声称可运行同等级 MP/JD/FW 用例
+            （G-02 保持 PARTIAL；MP-6/FW-7 DM8 部分未验证，见 COMPATIBILITY_REPORT.md）。
         -->
         <profile>
             <id>dm8-compat</id>
@@ -165,6 +189,18 @@
                     <scope>test</scope>
                 </dependency>
             </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <!-- 清空默认 excludes：Profile 显式启用时运行 DM8 测试（含 fail-closed 检查） -->
+                            <excludes combine.self="override" />
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 </project>

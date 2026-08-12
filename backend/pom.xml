@@ -39,16 +39,13 @@
           DEV-0002（G-02 外围依赖冻结）：
           - MyBatis-Plus / Sa-Token 使用官方 Spring Boot 4 Starter（Maven Central 核验，2026-08-11）。
           - MySQL/PostgreSQL/Redis/Flyway 由 Spring Boot 4.1.0 BOM 管理，不另定版本。
-          - Testcontainers 覆盖 SB 4.1.0 BOM（2.0.5）的明确原因（理由记录于 docs/dev-0002/COMPATIBILITY_REPORT.md）：
-            (1) Testcontainers 2.0.x 已移除 org.testcontainers:mysql / postgresql / junit-jupiter 模块
-                （Maven Central 404 实证），无法使用既有 JUnit 5 容器模式；
-            (2) 1.x 线内 1.20.6 → 1.21.4：1.20.6 的 docker-java 无法协商 colima Docker daemon
-                29.5.2 的 API（客户端默认 1.32 < 服务端最低 1.40，真实运行日志实证）；
-                1.21.4 升级 docker-java 后协商成功，且保持 mysql/postgresql/junit-jupiter 模块。
+          - Testcontainers 2.0.5 由 Spring Boot 4.1.0 BOM（testcontainers-bom import）统一管理，
+            不覆盖版本（DEV-0002 评审修正 P0：2.0 将模块重命名为 testcontainers-junit-jupiter /
+            testcontainers-mysql / testcontainers-postgresql，容器类迁移到 org.testcontainers.mysql /
+            org.testcontainers.postgresql 包）。
         -->
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <sa-token.version>1.45.0</sa-token.version>
-        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <modules>
@@ -79,26 +76,41 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- 统一管理 Testcontainers 版本（覆盖 SB 4.1.0 BOM 2.0.5 的理由见 properties 注释与 DEV-0002 报告） -->
+            <!--
+              Testcontainers 2.0.5：版本与 Spring Boot 4.1.0 BOM 的 testcontainers.version 一致
+              （2.0.5），非覆盖。说明：SB BOM 对 testcontainers-bom 的嵌套 import 经 Maven 3.9
+              实证未传递到本 reactor 子模块（version missing），故此处显式声明 2.0.5 并保留
+              testcontainers-bom import 供依赖管理参考。坐标与包名按 Testcontainers 2.0 官方
+              迁移规范：testcontainers-junit-jupiter / testcontainers-mysql /
+              testcontainers-postgresql；容器类 org.testcontainers.mysql.MySQLContainer /
+              org.testcontainers.postgresql.PostgreSQLContainer。
+            -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>2.0.5</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers</artifactId>
-                <version>${testcontainers.version}</version>
+                <version>2.0.5</version>
             </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
-                <artifactId>junit-jupiter</artifactId>
-                <version>${testcontainers.version}</version>
+                <artifactId>testcontainers-junit-jupiter</artifactId>
+                <version>2.0.5</version>
             </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
-                <artifactId>mysql</artifactId>
-                <version>${testcontainers.version}</version>
+                <artifactId>testcontainers-mysql</artifactId>
+                <version>2.0.5</version>
             </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
-                <artifactId>postgresql</artifactId>
-                <version>${testcontainers.version}</version>
+                <artifactId>testcontainers-postgresql</artifactId>
+                <version>2.0.5</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -25,20 +25,27 @@ Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 固定核心下，用真实 Testc
    RD-1 原则优先默认客户端；不引入 Redisson）。
 6. **Flyway**：`flyway-core`/`flyway-mysql`/`flyway-database-postgresql:12.4.0`（SB BOM 管理）+
    `org.springframework.boot:spring-boot-flyway:4.1.0`（SB4 模块化自动配置）。
-7. **Testcontainers**：`1.21.4`（覆盖 SB 4.1.0 BOM 2.0.5；原因：2.0.x 移除 mysql/postgresql/
-   junit-jupiter 模块；1.20.6 的 docker-java 无法协商现代 daemon API）。
-8. **DM8**：`com.dameng:DmJdbcDriver18` 坐标可用（Maven Central 可解析），**未冻结版本**——
-   待取得合法驱动与 DM8 授权环境后固定（独立 Profile `-P dm8-compat`；禁 systemPath、禁提交 Git、
-   记录 SHA-256 与许可证）。**DM8 未验证前 G-02 保持 PARTIAL，不得 PASS。**
+7. **Testcontainers**：`2.0.5`（Spring Boot 4.1.0 BOM 的 testcontainers.version；坐标与包名按
+   Testcontainers 2.0 官方迁移规范：`testcontainers-junit-jupiter`/`testcontainers-mysql`/
+   `testcontainers-postgresql`，容器类 `org.testcontainers.mysql.MySQLContainer`/
+   `org.testcontainers.postgresql.PostgreSQLContainer`）。**修正（评审 P0）**：此前"2.0.x 移除
+   mysql/postgresql/junit-jupiter 模块"结论错误——2.0 是重命名模块与迁移包；无版本覆盖。
+8. **DM8**：`com.dameng:DmJdbcDriver18` 坐标可解析（Maven Central 核验），**未冻结版本**。
+   `-P dm8-compat` Profile 提供真实可执行验证入口（驱动解析 + fail-closed 连接检查，P1-7）；
+   **当前无 DM8 授权环境：Profile 仅验证驱动解析，不声称可运行同等级 MP/JD/FW 用例（P1-8）；
+   DM8 未验证前 G-02 保持 PARTIAL，不得 PASS。** 禁 systemPath、禁提交 Git、记录 SHA-256 与许可证。
 
 ## 验证
 
 - `./mvnw clean verify`（JDK 21）：55/55 全绿（41 既有 AgentScope + 14 外围依赖）。
 - 组合 Smoke Test：同一 Spring 上下文装配 AgentScope + MyBatis-Plus + Sa-Token + Flyway + Redis +
   JDBC 并真实运行。
-- dependency:tree：无版本冲突；Jackson 2（2.21.4）与 Jackson 3（3.1.4）共存由 SB4 BOM 管理、实证无冲突。
-- 兼容发现（spring-boot-flyway 模块化、SB4 JDBC 包迁移、Testcontainers 模块变更、分页插件 optional）
-  详见 COMPATIBILITY_REPORT.md §8。
+- dependency:tree：无版本冲突；Jackson 2（2.21.4）与 Jackson 3（3.1.4）共存由 SB4 BOM 管理、实证无冲突；
+  Testcontainers 2.0.5 四个模块均解析为 2.0.5。
+- dm8-compat Profile：显式启用且缺少 DM8 endpoint/credential 时 fail-closed（真实失败证据）；当前仅验证
+  驱动解析（DM8 服务器未验证）。
+- 兼容发现（Testcontainers 2.0 迁移规范、SB BOM 嵌套 import 未传递、spring-boot-flyway 模块化、
+  SB4 JDBC 包迁移、分页插件 optional）详见 COMPATIBILITY_REPORT.md §8。
 
 ## 影响
 
