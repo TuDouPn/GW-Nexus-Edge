@@ -1,0 +1,61 @@
+# Workflow Security：校验 Workflow YAML + 检查危险权限/可变引用/pull_request_target/Secret 暴露。
+# Required Check 名称（分支保护使用）：Workflow Security / Lint
+# actionlint 以固定版本二进制下载并校验官方 checksums（DEV-0005 设计修订 4：禁 curl|sh，验证官方 SHA256）。
+name: Workflow Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download actionlint (fixed version) and verify official checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 固定版本：actionlint v1.7.12；从官方 GitHub Release 下载二进制与 checksums
+          # （不使用 curl|sh；下载后经官方 checksums.txt 校验 SHA-256）。
+          VERSION="1.7.12"
+          BASE="https://github.com/rhysd/actionlint/releases/download/v${VERSION}"
+          curl -fL -o /tmp/actionlint.tar.gz "${BASE}/actionlint_${VERSION}_linux_x86_64.tar.gz"
+          curl -fL -o /tmp/actionlint-checksums.txt "${BASE}/actionlint_${VERSION}_checksums.txt"
+          (cd /tmp && grep "actionlint_${VERSION}_linux_x86_64.tar.gz" actionlint-checksums.txt \
+            | sha256sum -c -)
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          chmod +x /tmp/actionlint
+
+      - name: actionlint（校验全部 Workflow YAML）
+        shell: bash
+        run: |
+          /tmp/actionlint -color .github/workflows/*.yml
+
+      - name: 危险权限 / 可变引用 / pull_request_target / Secret 暴露检查
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          # 可变引用（@main/@master/@分支/@tag）禁止——设计修订 4 要求固定 commit SHA
+          if grep -rnE "uses: [^#]*@(main|master|v?[0-9]+(\.[0-9]+)*)\s*$" .github/workflows/*.yml; then
+            echo "::error::发现可变 Action 引用（必须固定 commit SHA）"; fail=1
+          fi
+          # pull_request_target 禁止用于执行 PR 代码
+          if grep -rn "pull_request_target" .github/workflows/*.yml; then
+            echo "::error::禁止 pull_request_target 执行 PR 代码（Fork 威胁模型）"; fail=1
+          fi
+          # 宽泛写权限（workflow 级）检查
+          if grep -rnE "^permissions:" -A3 .github/workflows/*.yml | grep -E "write-all|contents: write|: write" ; then
+            echo "::error::检查到宽泛写权限（应最小权限 contents: read）"; fail=1
+          fi
+          exit $fail

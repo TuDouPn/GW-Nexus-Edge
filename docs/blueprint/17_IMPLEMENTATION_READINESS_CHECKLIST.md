@@ -27,7 +27,7 @@
 | G-04 | WPS Renderer 门禁 | 免费版的授权、自动化接口、无人值守、模板保真、稳定性和恢复测试通过 | Blocked：待验证 |
 | G-05 | Skill 验收材料 | 脱敏真实数据、三类正式模板、人工认可 Golden Result 全部到位 | Blocked：待试点企业提供 |
 | G-06 | 私有 GitHub CI | 分支保护和完整 Actions 质量门禁已启用 | Pending |
-| G-07 | 第三方开源组件合规基线 | LICENSE、NOTICE、THIRD-PARTY-NOTICES、SBOM 流程已建立，且与闭源商业分发兼容 | Pending |
+| G-07 | 第三方开源组件合规基线 | LICENSE、NOTICE、THIRD-PARTY-NOTICES、SBOM 流程已建立，且与 Apache-2.0 开源分发兼容（ADR-0010） | Pending |
 | G-08 | Coding真实材料 | ≥2个脱敏真实Repository、静态+SSR、任务/验收/测试/非生产Secret齐备 | Blocked：待试点企业提供 |
 | G-09 | Sandbox隔离PoC | Rootless Docker+gVisor、Broker、资源隔离、恢复与核心网络阻断通过 | Blocked：待验证 |
 | G-10 | Build供应链PoC | Rootless BuildKit、Harbor、Gitleaks、Semgrep、Trivy、Cosign、Provenance通过 | Blocked：待验证 |

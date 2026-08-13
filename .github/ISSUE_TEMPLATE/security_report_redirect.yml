@@ -1,0 +1,15 @@
+name: Security report redirect
+description: 安全漏洞请走私密渠道，不在此公开提交
+title: "[SECURITY] 请勿在此公开提交——使用私密报告渠道"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 安全漏洞请使用私密渠道
+
+        请**不要**在此公开 Issue 提交安全漏洞细节。
+
+        请使用 GitHub **Private Vulnerability Reporting**（Security → Report a vulnerability），
+        或按照 [`SECURITY.md`](../../../SECURITY.md) 的说明报告。
+
+        公开提交的安全信息可能被移除，并转由私密渠道处理。

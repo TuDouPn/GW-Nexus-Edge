@@ -1,6 +1,18 @@
 # GW Nexus Edge
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 > 基于 AgentScope Java 2 构建的企业级 Agent Workspace 平台。
+
+## 许可与边界（ADR-0010）
+
+- 本项目源代码采用 **Apache License 2.0** 开源（见 [LICENSE](LICENSE)）。
+- **当前处于 V1 Enterprise Pilot 开发阶段，不代表生产可用**；未通过生产门禁的能力在文档中标记
+  `Pending` / `Partial` / `Blocked`。
+- **商标、Logo、客户数据、企业模板与第三方组件不因 Apache-2.0 自动授权**；第三方依赖各自许可证见
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+- **安全漏洞请通过私密渠道报告**（[SECURITY.md](SECURITY.md)，Private Vulnerability Reporting），
+  **不要公开创建安全 Issue**。
 
 GW Nexus Edge 面向企业私有化部署，为企业提供安全、可治理、可审计的 AI Agent 工作空间。平台将企业身份、业务资料、知识检索、Agent 执行、可信证据、成果审批与应用交付组织在统一 Workspace 中，使 Agent 不只回答问题，还能在明确的权限和责任边界内完成真实业务任务。
 

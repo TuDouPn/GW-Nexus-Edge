@@ -1,0 +1,28 @@
+name: Bug report
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清楚描述期望行为与实际行为。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 最小可复现步骤或测试。
+  - type: input
+    id: version
+    attributes:
+      label: 版本/Commit
+      description: 涉及的 Commit SHA 或版本。
+  - type: checkboxes
+    id: security
+    attributes:
+      label: 安全提醒
+      options:
+        - label: 如果这是安全漏洞，我不会在此公开提交——将改用 SECURITY.md 的私密报告渠道。

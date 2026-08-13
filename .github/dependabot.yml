@@ -1,0 +1,19 @@
+# Dependabot 配置（公开仓库供应链更新）
+# 版本由 dependabot 管理；合并前须通过 CI（Backend CI / Verify、Repository Security / Scan 等）。
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
