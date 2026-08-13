@@ -2,9 +2,9 @@
 
 > 本清单由当前 Maven 依赖闭包（CycloneDX SBOM，`cyclonedx-maven-plugin:2.9.3:makeAggregateBom`）生成并核对；
 > 许可证状态分列：`VERIFIED`（已从权威 POM/SBOM 实证）、`REVIEW_REQUIRED`（POM 未在 SBOM 解析，需 G-07 逐项人工核验，不凭名称猜测）。
-> 更新方式：重新生成 SBOM 后运行 `docs/dev-0005/` 生成脚本；禁止手工凭空增删。
+> 更新方式：重新生成 SBOM 后运行生成脚本；禁止手工凭空增删。
 
-## 组件清单（按来源分组）
+## 组件清单
 
 | 组件 | 版本 | 许可证状态 |
 |---|---|---|
@@ -107,6 +107,7 @@
 | org.apache.tomcat.embed:tomcat-embed-core | 11.0.22 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.apache.tomcat.embed:tomcat-embed-el | 11.0.22 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.apache.tomcat.embed:tomcat-embed-websocket | 11.0.22 | REVIEW_REQUIRED (G-07 逐项核验) |
+| org.checkerframework:checker-qual | 3.55.1 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.flywaydb:flyway-core | 12.4.0 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.flywaydb:flyway-database-postgresql | 12.4.0 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.flywaydb:flyway-mysql | 12.4.0 | REVIEW_REQUIRED (G-07 逐项核验) |
@@ -118,7 +119,7 @@
 | org.mybatis:mybatis | 3.5.19 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.mybatis:mybatis-spring | 4.0.0 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.objenesis:objenesis | 3.3 | REVIEW_REQUIRED (G-07 逐项核验) |
-| org.postgresql:postgresql | 42.7.11 | VERIFIED: BSD-2-Clause (POM 实证) |
+| org.postgresql:postgresql | 42.7.13 | VERIFIED: BSD-2-Clause (POM 实证) |
 | org.reactivestreams:reactive-streams | 1.0.4 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.redisson:redisson | 4.2.0 | REVIEW_REQUIRED (G-07 逐项核验) |
 | org.slf4j:jul-to-slf4j | 2.0.18 | REVIEW_REQUIRED (G-07 逐项核验) |
@@ -171,9 +172,9 @@
 
 ## 统计
 
-- 组件总数：160
+- 组件总数：161
 - VERIFIED：12
-- REVIEW_REQUIRED：148
+- REVIEW_REQUIRED：149
 
 > 本项目自身模块（com.gwnexusedge:*）按 Apache License 2.0 授权（见 LICENSE/NOTICE）。
 > 许可证不明确的法律结论标记 REVIEW_REQUIRED，不由 AI 自行解释为兼容。

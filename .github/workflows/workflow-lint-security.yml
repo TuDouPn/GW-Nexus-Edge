@@ -29,11 +29,12 @@ jobs:
           # （不使用 curl|sh；下载后经官方 checksums.txt 校验 SHA-256）。
           VERSION="1.7.12"
           BASE="https://github.com/rhysd/actionlint/releases/download/v${VERSION}"
-          curl -fL -o /tmp/actionlint.tar.gz "${BASE}/actionlint_${VERSION}_linux_x86_64.tar.gz"
+          curl -fL -o "/tmp/actionlint_${VERSION}_linux_x86_64.tar.gz" \
+            "${BASE}/actionlint_${VERSION}_linux_x86_64.tar.gz"
           curl -fL -o /tmp/actionlint-checksums.txt "${BASE}/actionlint_${VERSION}_checksums.txt"
           (cd /tmp && grep "actionlint_${VERSION}_linux_x86_64.tar.gz" actionlint-checksums.txt \
             | sha256sum -c -)
-          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          tar -xzf "/tmp/actionlint_${VERSION}_linux_x86_64.tar.gz" -C /tmp actionlint
           chmod +x /tmp/actionlint
 
       - name: actionlint（校验全部 Workflow YAML）

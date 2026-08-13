@@ -92,6 +92,17 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!--
+              DEV-0005：受控覆盖 SB 4.1.0 BOM 的 postgresql 42.7.11 → 42.7.13（CVE-2026-54291 修复）。
+              CVE：pgjdbc 42.7.4~42.7.12 在 channelBinding=require 时可能被静默降级为无 channel binding
+              的 SCRAM-SHA-256（失去 MITM 防护）；42.7.13 修复（Trivy fs scan 实证，PR CI 阻断）。
+              证据：compat PostgreSQL 测试（postgres:16.6 + 42.7.13）通过（`./mvnw clean verify`）。
+            -->
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>42.7.13</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 

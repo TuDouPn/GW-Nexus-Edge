@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-12",
+  "updated": "2026-08-13",
   "note": "verified 仅包含已从权威 POM/SBOM 实证的许可证；review_required 为 POM 未在 SBOM 解析、需 G-07 逐项人工核验的清单（不得凭组件名称猜测许可证）。",
   "verified": {
     "com.gwnexusedge:nexus-edge-domain-agentscope-port": "Apache License 2.0 (项目自身)",
@@ -108,6 +108,7 @@
     "org.apache.tomcat.embed:tomcat-embed-core",
     "org.apache.tomcat.embed:tomcat-embed-el",
     "org.apache.tomcat.embed:tomcat-embed-websocket",
+    "org.checkerframework:checker-qual",
     "org.flywaydb:flyway-core",
     "org.flywaydb:flyway-database-postgresql",
     "org.flywaydb:flyway-mysql",
