@@ -67,7 +67,7 @@ jobs:
 
       - name: Generate CycloneDX SBOM (Maven plugin 2.9.3，已核验)
         working-directory: backend
-        run: ./mvnw -q org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom -DoutputFormat=json
+        run: ./mvnw -q org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom -DoutputFormat=json -DoutputName=aggregate-bom
 
       - name: Validate SBOM（存在、可解析、含实际组件；禁止只检查退出码）
         shell: bash
