@@ -58,8 +58,26 @@ jobs:
           if grep -rnE "^[[:space:]]*${FORBIDDEN_TRIGGER}[[:space:]]*:" .github/workflows/*.yml; then
             echo "::error::禁止 ${FORBIDDEN_TRIGGER} 触发事件执行 PR 代码（Fork 威胁模型）"; fail=1
           fi
-          # 宽泛写权限（workflow 级）检查
-          if grep -rnE "^permissions:" -A3 .github/workflows/*.yml | grep -E "write-all|contents: write|: write" ; then
-            echo "::error::检查到宽泛写权限（应最小权限 contents: read）"; fail=1
-          fi
+          # 宽泛写权限检查（DEV-0005 设计修订 3）：
+          #   1) write-all 在任何 Workflow 都禁止；
+          #   2) 被 pull_request 触发的 Workflow 工作流级 permissions 不得含写权限；
+          #   3) 仅 push 触发的 Workflow（如依赖图提交 dependency-submission）允许最小必要写权限。
+          python3 - <<'PYEOF'
+          import glob, re, sys
+          fail = False
+          for f in sorted(glob.glob(".github/workflows/*.yml")):
+              text = open(f, encoding="utf-8").read()
+              m = re.search(r"^permissions:\n((?:[ \t]+[^ \t].*\n)+)", text, re.M)
+              if not m:
+                  continue
+              block = m.group(1)
+              if "write-all" in block:
+                  print(f"::error::{f} 声明 write-all（禁止）")
+                  fail = True
+              pr_triggered = bool(re.search(r"^[ \t]+pull_request\s*:", text, re.M))
+              if pr_triggered and re.search(r"^[ \t]+\S+:[ \t]*write\s*$", block, re.M):
+                  print(f"::error::{f} 由 PR 触发却声明工作流级写权限（应只读 contents: read）")
+                  fail = True
+          sys.exit(1 if fail else 0)
+          PYEOF
           exit $fail

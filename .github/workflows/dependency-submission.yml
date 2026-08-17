@@ -1,0 +1,38 @@
+# Dependency Submission：用 Maven 自身（depgraph plugin）解析 backend 完整多模块 reactor，
+# 向 GitHub 依赖图提交准确依赖快照（含传递依赖），作为 dependency-review 的可比较基线。
+#
+# 触发：仅 push main（合并后）。Fork PR 不运行本 Workflow，也不获得写权限
+# （Fork 安全模型：pull_request 事件不受本 Workflow 影响）。
+#
+# 背景：GitHub 原生静态分析对嵌套多模块 Maven（根 pom → backend → 叶子模块）检测不可靠，
+# 官方推荐用 dependency submission action 提交真实依赖树（DEV-0005 依赖图 bootstrap）。
+name: Dependency Submission
+
+on:
+  push:
+    branches: [main]
+
+# contents: write 仅为依赖图提交 API 所需（写依赖快照，不修改代码/发布/部署）。
+# 本 Workflow 仅由可信的 main 合并触发，不参与 Fork PR 不可信代码路径。
+permissions:
+  contents: write
+
+jobs:
+  submit:
+    name: Submit Maven Dependency Graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Submit Maven dependency snapshot (backend reactor)
+        uses: advanced-security/maven-dependency-submission-action@b275d12641ac2d2108b2cbb7598b154ad2f2cee8 # v5.0.0
+        with:
+          directory: backend
