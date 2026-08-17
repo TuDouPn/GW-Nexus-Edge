@@ -52,9 +52,11 @@ jobs:
           if grep -rnE "uses: [^#]*@(main|master|v?[0-9]+(\.[0-9]+)*)\s*$" .github/workflows/*.yml; then
             echo "::error::发现可变 Action 引用（必须固定 commit SHA）"; fail=1
           fi
-          # pull_request_target 禁止用于执行 PR 代码
-          if grep -rn "pull_request_target" .github/workflows/*.yml; then
-            echo "::error::禁止 pull_request_target 执行 PR 代码（Fork 威胁模型）"; fail=1
+          # 禁止以 _target 触发事件执行 PR 代码（Fork 威胁模型）。只匹配真实触发键
+          # （on: 下的 YAML key），注释与说明文字不算违规；关键字经拼接避免自匹配。
+          FORBIDDEN_TRIGGER="pull_request""_target"
+          if grep -rnE "^[[:space:]]*${FORBIDDEN_TRIGGER}[[:space:]]*:" .github/workflows/*.yml; then
+            echo "::error::禁止 ${FORBIDDEN_TRIGGER} 触发事件执行 PR 代码（Fork 威胁模型）"; fail=1
           fi
           # 宽泛写权限（workflow 级）检查
           if grep -rnE "^permissions:" -A3 .github/workflows/*.yml | grep -E "write-all|contents: write|: write" ; then
