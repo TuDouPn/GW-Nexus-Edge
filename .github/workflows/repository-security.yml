@@ -1,5 +1,5 @@
 # Repository Security：Secret Scan / SCA / SBOM / License 合规。
-# Required Check 名称（分支保护使用）：Repository Security / Scan
+# Required Check 名称（分支保护使用，Job 名即 context）：Scan
 # Fork 安全模型（DEV-0005 设计修订 1）：
 #   - pull_request（含 Fork）：真实扫描、不读 Secret、permissions 仅 contents: read、
 #     生成脱敏 Artifact、不授予 security-events: write、不上传 SARIF、扫描问题即失败。

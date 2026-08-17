@@ -1,5 +1,5 @@
 # Dependency Review：仅在适用事件与权限允许时执行；不获取额外写权限。
-# Required Check 名称（分支保护使用）：Dependency Review / Review
+# Required Check 名称（分支保护使用，Job 名即 context）：Review
 name: Dependency Review
 
 on:

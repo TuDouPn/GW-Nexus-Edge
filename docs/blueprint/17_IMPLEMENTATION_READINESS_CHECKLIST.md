@@ -26,8 +26,8 @@
 | G-03 | AgentScope 能力盘点 | Harness/Core、Provider、Persistence、Recovery、Observability 的实际 API 与边界形成适配清单 | PARTIAL（DEV-0001/0003/0004：能力清单已验证大部分；**Redis Persistence/Recovery 已验证（ADR-0008）**；**Checkpoint 能力盘点完成**——SandboxSnapshot payload 往返 VERIFIED、完整 Sandbox 跨调用自动恢复 NOT_VERIFIED、Token/Tool 栈/任意崩溃点续跑 NOT_VERIFIED+OUT_OF_SCOPE（ADR-0009）；**真实 Provider BLOCKED_BY_CREDENTIAL → 不得 PASS**） |
 | G-04 | WPS Renderer 门禁 | 免费版的授权、自动化接口、无人值守、模板保真、稳定性和恢复测试通过 | Blocked：待验证 |
 | G-05 | Skill 验收材料 | 脱敏真实数据、三类正式模板、人工认可 Golden Result 全部到位 | Blocked：待试点企业提供 |
-| G-06 | 私有 GitHub CI | 分支保护和完整 Actions 质量门禁已启用 | Pending |
-| G-07 | 第三方开源组件合规基线 | LICENSE、NOTICE、THIRD-PARTY-NOTICES、SBOM 流程已建立，且与 Apache-2.0 开源分发兼容（ADR-0010） | Pending |
+| G-06 | 公开 GitHub CI | 分支保护和完整 Actions 质量门禁已启用 | **PARTIAL**（2026-08-17，DEV-0005：分支保护已启用——Verify/Scan/Lint 真实 Required Checks、1 人评审、禁 force push/删除、enforce_admins；**dependency-review 因依赖图 bootstrap 限制尚不能作为 working required check**——Maven 工程位于 `backend/`，需根 `pom.xml` + dependency-submission 合并到 main 填充依赖图后，追加 `Review` 为 Required Check 并复验 → 不得 PASS） |
+| G-07 | 第三方开源组件合规基线 | LICENSE、NOTICE、THIRD-PARTY-NOTICES、SBOM 流程已建立，且与 Apache-2.0 开源分发兼容（ADR-0010） | **PASS**（2026-08-17，DEV-0005：Apache-2.0 LICENSE/NOTICE/THIRD-PARTY-NOTICES/CycloneDX SBOM/license-baseline 合规检查均已建立并在 CI 固化；**149 个第三方组件 license 待 G-07 逐项人工核验**，已记录于 THIRD-PARTY-NOTICES.md 与 docs/dev-0005/license-baseline.json） |
 | G-08 | Coding真实材料 | ≥2个脱敏真实Repository、静态+SSR、任务/验收/测试/非生产Secret齐备 | Blocked：待试点企业提供 |
 | G-09 | Sandbox隔离PoC | Rootless Docker+gVisor、Broker、资源隔离、恢复与核心网络阻断通过 | Blocked：待验证 |
 | G-10 | Build供应链PoC | Rootless BuildKit、Harbor、Gitleaks、Semgrep、Trivy、Cosign、Provenance通过 | Blocked：待验证 |

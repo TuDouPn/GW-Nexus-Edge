@@ -1,5 +1,5 @@
 # Backend CI：Java 21 + Maven Wrapper + Testcontainers 真实集成验证。
-# Required Check 名称（分支保护使用）：Backend CI / Verify
+# Required Check 名称（分支保护使用，Job 名即 context）：Verify
 # 固定 Action SHA 策略：全部 Action 固定到不可变 commit SHA，注释保留版本名称（DEV-0005 设计修订 4）。
 name: Backend CI
 

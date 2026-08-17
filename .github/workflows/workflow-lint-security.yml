@@ -1,5 +1,5 @@
 # Workflow Security：校验 Workflow YAML + 检查危险权限/可变引用/pull_request_target/Secret 暴露。
-# Required Check 名称（分支保护使用）：Workflow Security / Lint
+# Required Check 名称（分支保护使用，Job 名即 context）：Lint
 # actionlint 以固定版本二进制下载并校验官方 checksums（DEV-0005 设计修订 4：禁 curl|sh，验证官方 SHA256）。
 name: Workflow Security
 
