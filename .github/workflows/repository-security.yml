@@ -59,22 +59,6 @@ jobs:
           path: /tmp/gw-nexus-scan/gitleaks-*.json
           if-no-files-found: warn
 
-      - name: Install Trivy binary and verify pinned SHA256
-        run: bash scripts/ci/install-binary.sh trivy /tmp/gw-nexus-ci-tools
-
-      - name: SCA filesystem/dependency scan (Trivy) —— HIGH/CRITICAL 阻断
-        # 当前无生产 OCI Image。本扫描是 filesystem/dependency scan，不是 Container Image Scan。
-        # Trivy 数据库无法获取 → 脚本以 TOOL_BLOCKED/INFRASTRUCTURE_FAILURE 失败，不显示为无漏洞。
-        run: bash scripts/ci/vuln-scan.sh /tmp/gw-nexus-scan /tmp/gw-nexus-ci-tools/trivy
-
-      - name: Upload Trivy SARIF (artifact；Fork PR 不上传 Code Scanning)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: trivy-fs-sarif
-          path: /tmp/gw-nexus-scan/trivy-fs.sarif
-          if-no-files-found: warn
-
       - name: Generate CycloneDX SBOM JSON/XML (plugin 2.9.3) and validate components
         run: bash scripts/ci/generate-sbom.sh
 
@@ -94,6 +78,22 @@ jobs:
             --baseline docs/dev-0005/license-baseline.json \
             --review-out /tmp/gw-nexus-scan/license-review.json \
             --check
+
+      - name: Install Trivy binary and verify pinned SHA256
+        run: bash scripts/ci/install-binary.sh trivy /tmp/gw-nexus-ci-tools
+
+      - name: SCA dependency/SBOM scan (Trivy) —— HIGH/CRITICAL 阻断
+        # 当前无生产 OCI Image。扫描已解析 CycloneDX，不是 Container Image Scan。
+        # Trivy 数据库无法获取 → 脚本以 TOOL_BLOCKED/INFRASTRUCTURE_FAILURE 失败，不显示为无漏洞。
+        run: bash scripts/ci/vuln-scan.sh /tmp/gw-nexus-scan /tmp/gw-nexus-ci-tools/trivy backend/target/aggregate-bom.json
+
+      - name: Upload Trivy SARIF (artifact；Fork PR 不上传 Code Scanning)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-fs-sarif
+          path: /tmp/gw-nexus-scan/trivy-fs.sarif
+          if-no-files-found: warn
 
       - name: Upload License review list (artifact)
         if: always()

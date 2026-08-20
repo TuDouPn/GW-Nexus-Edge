@@ -15,9 +15,16 @@ if [ -z "${BIN}" ]; then
 fi
 
 SARIF="${OUT}/trivy-fs.sarif"
+INPUT="${3:-}"
 set +e
-"${BIN}" fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
-  --format sarif --output "${SARIF}" "${ROOT}"
+if [ -n "${INPUT}" ]; then
+  # 对已解析 CycloneDX 扫描：使用 Maven 解析后的真实版本，避免 Trivy 再打 Maven Central。
+  "${BIN}" sbom --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+    --format sarif --output "${SARIF}" "${INPUT}"
+else
+  "${BIN}" fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+    --format sarif --output "${SARIF}" "${ROOT}"
+fi
 code=$?
 set -e
 
