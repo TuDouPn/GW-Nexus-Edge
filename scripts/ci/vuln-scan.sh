@@ -26,27 +26,7 @@ if [ ! -s "${SARIF}" ]; then
   exit 2
 fi
 
-python3 - "${SARIF}" "${code}" <<'PY'
-import json, sys
-path, code = sys.argv[1], int(sys.argv[2])
-try:
-    data = json.load(open(path, encoding="utf-8"))
-except Exception as e:
-    print(f"::error::TOOL_BLOCKED/INFRASTRUCTURE_FAILURE：SARIF 不可解析：{e}")
-    sys.exit(2)
-runs = data.get("runs")
-if not isinstance(runs, list):
-    print("::error::TOOL_BLOCKED/INFRASTRUCTURE_FAILURE：SARIF 缺少 runs，不得视为无漏洞")
-    sys.exit(2)
-results = []
-for run in runs:
-    results.extend(run.get("results") or [])
-print(f"Trivy filesystem scan SARIF results={len(results)} exit={code}")
-if code == 1:
-    print("::error::HIGH/CRITICAL 漏洞阻断（filesystem/dependency scan，非 Container Image Scan）")
-    sys.exit(1)
-if code != 0:
-    print(f"::error::TOOL_BLOCKED/INFRASTRUCTURE_FAILURE：Trivy 退出码 {code}")
-    sys.exit(2)
-print("Trivy filesystem/dependency scan：无 HIGH/CRITICAL 阻断项")
-PY
+python3 "${ROOT}/scripts/ci/evaluate-trivy-sarif.py" \
+  "${SARIF}" \
+  "${ROOT}/docs/dev-0005/scan-exceptions.json" \
+  "${code}"

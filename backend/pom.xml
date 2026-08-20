@@ -41,6 +41,12 @@
 
         <!-- 由 00_DECISIONS.md §3 冻结；已于 2026-08-10 在 Maven Central 核验 -->
         <agentscope.version>2.0.1</agentscope.version>
+        <!--
+          DEV-0005：受控覆盖 Spring Boot 4.1.0 BOM 的 Netty 4.2.15.Final → 4.2.16.Final
+          （CVE-2026-59901：netty-codec-compression Bzip2Decoder 无限循环 DoS）。
+          不改变 AgentScope 2.0.1 冻结版本。
+        -->
+        <netty.version>4.2.16.Final</netty.version>
         <!-- AgentScope core/harness/扩展版本由官方 BOM 统一管理 -->
 
         <!--
@@ -110,6 +116,14 @@
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
                 <version>42.7.13</version>
+            </dependency>
+            <!-- 与 netty.version 同步，确保 codec-compression 等传递依赖不被旧 BOM 钉死 -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>

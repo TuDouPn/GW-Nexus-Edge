@@ -547,7 +547,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-buffer": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -556,7 +556,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-codec": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -565,7 +565,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-codec-base": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -574,7 +574,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-codec-compression": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -583,7 +583,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-codec-dns": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -592,7 +592,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-codec-marshalling": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -601,7 +601,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-codec-protobuf": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -610,7 +610,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-common": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -619,7 +619,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-handler": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -628,7 +628,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-resolver": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -637,7 +637,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-resolver-dns": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -646,7 +646,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-transport": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
@@ -655,7 +655,7 @@
       "reason": "permissive-identified"
     },
     "io.netty:netty-transport-native-unix-common": {
-      "version": "4.2.15.Final",
+      "version": "4.2.16.Final",
       "licenses": [
         "Apache-2.0"
       ],
