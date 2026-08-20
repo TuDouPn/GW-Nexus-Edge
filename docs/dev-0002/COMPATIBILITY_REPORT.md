@@ -187,3 +187,16 @@
 - **ADR-0007（外围依赖版本冻结）：Proposed**，待产品架构负责人批准（本报告 §2 版本表为草案内容）。
 - **未经批准不更新 00_DECISIONS.md** 冻结版本（沿用 P0-9 纪律）。
 - 批准后原子同步：00_DECISIONS §3（ORM/Auth/DB/Redis 版本）、05（驱动/迁移支持矩阵）、17（G-02）、16 术语表。
+
+## 12. DEV-0005 安全复验补充（2026-08-20）
+
+> 上文 PostgreSQL 42.7.11、Netty 4.2.15.Final（SB 4.1.0 BOM）与本地 55/55 仍为 **2026-08-12 历史结论**，不改写。
+
+DEV-0005 公开 CI Trivy 扫描否决：
+
+| 组件 | 旧版本（历史冻结/BOM） | CVE | 受控覆盖 | 证据 |
+|---|---|---|---|---|
+| org.postgresql:postgresql | 42.7.11 | CVE-2026-54291 | 42.7.13 | `backend/pom.xml` dependencyManagement；PR #3 `Backend CI / Verify` 2026-08-20 真实通过 |
+| io.netty:netty-codec-compression | 4.2.15.Final | CVE-2026-59901 | 4.2.16.Final | `netty.version` + netty-bom；同一 Required Check 真实通过 |
+
+AgentScope 2.0.1 未改。G-02 保持 **PARTIAL**（DM8 未验证）。漏洞扫描不再仅依赖当时 BLOCKED 的 OWASP Dependency-Check；DEV-0005 已建立 Trivy HIGH/CRITICAL 阻断（G-06 基座，不替代 G-10 生产镜像扫描）。

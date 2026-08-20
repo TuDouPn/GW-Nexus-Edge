@@ -33,3 +33,6 @@ jobs:
 
       - name: 危险权限 / 可变引用 / pull_request_target / Secret / curl|sh 检查
         run: python3 scripts/ci/workflow-security-check.py
+
+      - name: CI script regression tests (license baseline + Trivy SARIF)
+        run: python3 -m unittest discover -s scripts/ci/tests -v

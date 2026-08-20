@@ -3,7 +3,9 @@
 
 POLICY_ACCEPT：单一、有证据的宽松许可证（Apache-2.0/MIT/BSD-2/BSD-3/ISC/0BSD/CC0-1.0/EDL-1.0）。
 REVIEW_REQUIRED：缺失、未识别、多许可证表达式，或法律结论不明确（GPL/LGPL/EPL/CDDL/FOSS Exception/Public Domain 等）。
-CI --check：新组件或新的缺失许可证阻断；已知 REVIEW_REQUIRED 输出清单但不伪装成核验完成。
+CI --check：比较 baseline 的 key、精确 version、licenses、evidence、status、reason。
+版本漂移、许可证证据变化、POLICY_ACCEPT→REVIEW_REQUIRED、缺失/未知许可证、新组件均阻断。
+已登记且字段完全一致的 REVIEW_REQUIRED 进入人工复核清单，不把 G-07 写成 PASS。
 """
 from __future__ import annotations
 
@@ -165,6 +167,52 @@ def component_key(comp: dict) -> str:
     return f"{group}:{name}" if group else name
 
 
+def snapshot(row: dict) -> dict:
+    return {
+        "version": row.get("version") or "",
+        "licenses": list(row.get("licenses") or []),
+        "evidence": row.get("evidence") or "",
+        "status": row.get("status") or "",
+        "reason": row.get("reason") or "",
+    }
+
+
+def check_rows(rows: list[dict], baseline: dict) -> list[str]:
+    """对比当前 SBOM 行与 baseline.identified。返回阻断原因；空列表表示检查通过。"""
+    identified = baseline.get("identified") or {}
+    findings: list[str] = []
+    current_keys = {row["key"] for row in rows}
+    for key in identified:
+        if key not in current_keys:
+            findings.append(f"baseline 组件从 SBOM 消失（阻断）: {key}")
+    for row in rows:
+        key = row["key"]
+        cur = snapshot(row)
+        prev = identified.get(key)
+        missing_or_unknown = (not cur["licenses"]) or cur["reason"] in ("missing", "unrecognized")
+        if prev is None:
+            findings.append(
+                f"新增未进入 baseline 的组件（阻断）: {key} version={cur['version']} licenses={cur['licenses']}"
+            )
+            continue
+        prev_s = snapshot(prev)
+        if prev_s["version"] != cur["version"]:
+            findings.append(f"版本漂移（阻断）: {key} {prev_s['version']} → {cur['version']}")
+        if prev_s["licenses"] != cur["licenses"]:
+            findings.append(f"许可证漂移（阻断）: {key} {prev_s['licenses']} → {cur['licenses']}")
+        if prev_s["evidence"] != cur["evidence"]:
+            findings.append(f"许可证证据变化（阻断）: {key} {prev_s['evidence']} → {cur['evidence']}")
+        if prev_s["status"] != cur["status"]:
+            findings.append(f"许可证状态变化（阻断）: {key} {prev_s['status']} → {cur['status']}")
+        if prev_s["reason"] != cur["reason"]:
+            findings.append(f"许可证原因变化（阻断）: {key} {prev_s['reason']} → {cur['reason']}")
+        if missing_or_unknown and prev_s != cur:
+            findings.append(
+                f"缺失或未知许可证未按已登记 REVIEW_REQUIRED 精确匹配（阻断）: {key}"
+            )
+    return findings
+
+
 def collect(bom: dict, m2: Path) -> list[dict]:
     rows = []
     for comp in bom.get("components") or []:
@@ -252,23 +300,9 @@ def main() -> None:
     if baseline_path.is_file():
         baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    known_keys = set(baseline.get("identified", {}).keys())
-    known_review = {item["key"] if isinstance(item, dict) else item for item in baseline.get("review_required", [])}
-
-    new_missing = []
-    new_components = []
-    review = []
-    accept = []
-    for row in rows:
-        key = row["key"]
-        if key not in known_keys and args.check:
-            new_components.append(row)
-        if row["status"] == "POLICY_ACCEPT":
-            accept.append(row)
-        else:
-            review.append(row)
-            if row["reason"] == "missing" and key not in known_review and key not in known_keys and args.check:
-                new_missing.append(row)
+    review = [row for row in rows if row["status"] == "REVIEW_REQUIRED"]
+    accept = [row for row in rows if row["status"] == "POLICY_ACCEPT"]
+    findings = check_rows(rows, baseline)
 
     print(f"License 组件={len(rows)} POLICY_ACCEPT={len(accept)} REVIEW_REQUIRED={len(review)}")
 
@@ -317,15 +351,14 @@ def main() -> None:
     )
 
     if args.check:
-        if new_components:
-            for row in new_components:
-                print(f"新增未进入 baseline 的组件（阻断）: {row['key']} licenses={row['licenses']}")
-            fail("出现未记录的新依赖，必须更新 license-baseline 并取证")
-        if new_missing:
-            for row in new_missing:
-                print(f"新增未核验 License 缺失（阻断）: {row['key']}")
-            fail("新增缺失许可证不得默认通过")
-        print("License 检查通过：无新增未记录组件；REVIEW_REQUIRED 已进入人工复核清单（不构成 G-07 PASS）")
+        if findings:
+            for item in findings:
+                print(item)
+            fail("License baseline 比对失败（版本/许可证/证据/状态变化或新组件不得默认通过；不构成 G-07 PASS）")
+        print(
+            "License 检查通过：当前闭包与 baseline 的 key/version/licenses/evidence/status/reason 一致；"
+            "REVIEW_REQUIRED 已进入人工复核清单（不构成 G-07 PASS）"
+        )
 
 
 if __name__ == "__main__":

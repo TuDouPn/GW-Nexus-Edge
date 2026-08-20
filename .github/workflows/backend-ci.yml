@@ -43,6 +43,9 @@ jobs:
           key: maven-${{ runner.os }}-${{ hashFiles('backend/pom.xml', 'backend/**/pom.xml') }}
           restore-keys: maven-${{ runner.os }}-
 
+      - name: CI script regression tests (license baseline + Trivy SARIF)
+        run: python3 -m unittest discover -s scripts/ci/tests -v
+
       - name: Run clean verify (Testcontainers 需 Docker；ubuntu-latest 自带)
         working-directory: backend
         run: ./mvnw clean verify
