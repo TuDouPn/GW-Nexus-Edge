@@ -1,10 +1,10 @@
-# Repository Security：Secret Scan / SCA / SBOM / License 合规。
-# Required Check 名称（分支保护使用，Job 名即 context）：Scan
-# Fork 安全模型（DEV-0005 设计修订 1）：
-#   - pull_request（含 Fork）：真实扫描、不读 Secret、permissions 仅 contents: read、
-#     生成脱敏 Artifact、不授予 security-events: write、不上传 SARIF、扫描问题即失败。
-#   - push main（可信）：独立 upload-sarif Job 单独授予 security-events: write 并上传 SARIF。
-#   不使用 pull_request_target 执行 PR 代码；不用 event 表达式动态扩大整个 Workflow 权限。
+# Repository Security：Secret Scan / filesystem-dependency 漏洞 / SBOM / License。
+# Required Check context：Repository Security / Scan
+# Fork 安全模型：
+#   pull_request（含 Fork）：真实扫描、不读 Secret、permissions 仅 contents: read、
+#     脱敏 Artifact、不授予 security-events: write、不上传 SARIF、发现问题 Job 失败。
+#   push main：独立 upload-sarif Job 单独授予 security-events: write。
+# 禁止 pull_request_target；禁止用 event 表达式扩大整个 Workflow 权限。
 name: Repository Security
 
 on:
@@ -18,113 +18,94 @@ permissions:
 
 jobs:
   scan:
-    name: Scan
+    name: Repository Security / Scan
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - name: Checkout with full history（Secret Scan 需 Git 历史）
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Secret Scan (Gitleaks) —— 工作树 + Git 历史；确认 Secret 阻断
-        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          # 输出脱敏报告（不含 Secret Value）；发现 Secret 时该 Action 默认失败（阻断）
-          report-format: json
-          output: /tmp/gitleaks-report.json
+          distribution: temurin
+          java-version: "21"
 
-      - name: Upload Gitleaks report (artifact)
+      - name: Cache Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.m2/wrapper
+          key: maven-${{ runner.os }}-${{ hashFiles('backend/pom.xml', 'backend/**/pom.xml') }}
+          restore-keys: maven-${{ runner.os }}-
+
+      - name: Install Gitleaks binary and verify pinned SHA256
+        run: bash scripts/ci/install-binary.sh gitleaks /tmp/gw-nexus-ci-tools
+
+      - name: Secret Scan（工作树 + Git 历史；确认 Secret 阻断；输出脱敏）
+        run: bash scripts/ci/secret-scan.sh /tmp/gw-nexus-scan /tmp/gw-nexus-ci-tools/gitleaks
+
+      - name: Upload Gitleaks reports (artifact, redacted)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: gitleaks-report
-          path: /tmp/gitleaks-report.json
+          name: gitleaks-reports
+          path: /tmp/gw-nexus-scan/gitleaks-*.json
           if-no-files-found: warn
 
-      - name: SCA / filesystem-dependency scan (Trivy) —— HIGH/CRITICAL 阻断
-        # 注：当前无生产 OCI Image，本扫描为 filesystem/dependency scan，
-        # 不得描述为 Container Image Scan（DEV-0005 设计修订 5，NOT_APPLICABLE_YET）。
-        # trivy 数据库无法获取 → 该步骤失败（TOOL_BLOCKED/INFRASTRUCTURE_FAILURE），不显示为无漏洞。
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: backend
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          format: sarif
-          output: /tmp/trivy-fs.sarif
+      - name: Install Trivy binary and verify pinned SHA256
+        run: bash scripts/ci/install-binary.sh trivy /tmp/gw-nexus-ci-tools
 
-      - name: Upload Trivy SARIF (artifact, 脱敏；Fork PR 不上传 Code Scanning)
+      - name: SCA filesystem/dependency scan (Trivy) —— HIGH/CRITICAL 阻断
+        # 当前无生产 OCI Image。本扫描是 filesystem/dependency scan，不是 Container Image Scan。
+        # Trivy 数据库无法获取 → 脚本以 TOOL_BLOCKED/INFRASTRUCTURE_FAILURE 失败，不显示为无漏洞。
+        run: bash scripts/ci/vuln-scan.sh /tmp/gw-nexus-scan /tmp/gw-nexus-ci-tools/trivy
+
+      - name: Upload Trivy SARIF (artifact；Fork PR 不上传 Code Scanning)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-fs-sarif
-          path: /tmp/trivy-fs.sarif
+          path: /tmp/gw-nexus-scan/trivy-fs.sarif
           if-no-files-found: warn
 
-      - name: Generate CycloneDX SBOM (Maven plugin 2.9.3，已核验)
-        working-directory: backend
-        run: ./mvnw -q org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom -DoutputFormat=json -DoutputName=aggregate-bom
-
-      - name: Validate SBOM（存在、可解析、含实际组件；禁止只检查退出码）
-        shell: bash
-        run: |
-          BOM="backend/target/aggregate-bom.json"
-          if [ ! -f "$BOM" ]; then echo "::error::SBOM 文件不存在"; exit 1; fi
-          COUNT=$(jq -r '.components | length' "$BOM")
-          echo "SBOM 组件数: $COUNT"
-          if [ -z "$COUNT" ] || [ "$COUNT" -eq 0 ] 2>/dev/null; then
-            echo "::error::SBOM 未包含实际组件"; exit 1
-          fi
+      - name: Generate CycloneDX SBOM JSON/XML (plugin 2.9.3) and validate components
+        run: bash scripts/ci/generate-sbom.sh
 
       - name: Upload SBOM (artifact)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cyclonedx-sbom
-          path: backend/target/aggregate-bom.json
+          path: |
+            backend/target/aggregate-bom.json
+            backend/target/aggregate-bom.xml
           if-no-files-found: error
 
-      - name: License compliance check（SBOM 取证；未识别/缺失/多表达式 → 人工复核清单，新增缺失阻断）
-        shell: bash
+      - name: License compliance check（SBOM + POM 取证；未识别/缺失/多表达式 → 人工复核）
         run: |
-          # baseline 为版本化核验记录（docs/dev-0005/license-baseline.json）：
-          #   verified[g:a]=license  —— 已从权威 POM/SBOM 核验（G-07 复核记录）
-          #   review_required[g:a]   —— 已知待 G-07 逐项人工核验（人工复核清单，CI 不阻断但输出清单）
-          python3 - <<'PYEOF'
-          import json
-          bom = json.load(open("backend/target/aggregate-bom.json"))
-          baseline = json.load(open("docs/dev-0005/license-baseline.json"))
-          review = []
-          for c in bom.get("components", []):
-              g, n = c.get("group",""), c.get("name","")
-              lics = [l.get("license",{}).get("name","").strip() for l in c.get("licenses",[])] if c.get("licenses") else []
-              if any(lics):
-                  continue
-              key = f"{g}:{n}" if g else n
-              if key in baseline.get("verified", {}):
-                  continue  # 已核验
-              if key in baseline.get("review_required", []):
-                  review.append(key)  # 已知待核验 → 人工复核清单
-              else:
-                  print(f"新增未核验 License 缺失（阻断）: {key}")
-                  exit(1)
-          print("License 缺失项（人工复核清单，G-07 待核验）:", len(review))
-          json.dump({"review_required": review}, open("/tmp/license-review.json","w"))
-          PYEOF
+          python3 scripts/ci/check-licenses.py \
+            --bom backend/target/aggregate-bom.json \
+            --baseline docs/dev-0005/license-baseline.json \
+            --review-out /tmp/gw-nexus-scan/license-review.json \
+            --check
 
       - name: Upload License review list (artifact)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: license-review
-          path: /tmp/license-review.json
+          path: /tmp/gw-nexus-scan/license-review.json
           if-no-files-found: warn
 
-  # 高权限（security-events: write）限制在独立 Job + 明确事件条件（仅 push main 可信事件）。
-  # 不使用 pull_request_target；Fork PR 不运行本 Job。
+      - name: Check worktree has no uncommitted changes after tools
+        run: bash scripts/ci/check-uncommitted.sh
+
   upload-sarif:
     name: Upload SARIF (main only)
     runs-on: ubuntu-latest
@@ -136,11 +117,11 @@ jobs:
     needs: scan
     steps:
       - name: Download Trivy SARIF
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: trivy-fs-sarif
           path: /tmp/sarif
       - name: Upload SARIF to Code Scanning
-        uses: github/codeql-action/upload-sarif@c3400c2f38909e0dcf3c3a41f2030a8217be5d3e # v3
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: /tmp/sarif/trivy-fs.sarif

@@ -64,7 +64,7 @@ AgentScope 2.0.1 依赖闭包（agentscope-core/harness/extensions-model-openai/
 
 ## 影响
 
-- 修正 03 §6 / 08 §9 "AgentScope 保存官方 Execution Checkpoint"未经实证表述（ADR 批准后原子同步）。
+- 修正 03 §6 / 08 §9 "AgentScope 保存官方 Execution Checkpoint"未经实证表述（已在 ADR 批准后原子同步）。
 - G-03：Checkpoint"能力盘点"子项完成后可关闭；真实 Provider 仍 BLOCKED_BY_CREDENTIAL → G-03 保持 PARTIAL。
 - OQ-007：**已 RESOLVED（关联 ADR-0008/0009）**；Checkpoint 部分定级见 §验证（NOT_VERIFIED/NOT_COMMITTED）。
 

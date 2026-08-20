@@ -8,9 +8,7 @@
 2. 提供可复现的最小描述、影响范围和受影响的版本。
 3. 报告内容仅维护者可见，直到漏洞被处理。
 
-> 说明：若 GitHub 平台无法启用 Private Vulnerability Reporting，本文件将标记
-> `BLOCKED_BY_PLATFORM`，并向产品架构负责人请求真实的安全联系邮箱。
-> 我们不会编造 `security@` 域名或个人邮箱作为安全渠道。
+实施阶段将调用 GitHub API 启用并复验该能力。若平台无法启用 Private Vulnerability Reporting，本文件将标记 `BLOCKED_BY_PLATFORM`，并向产品架构负责人请求真实的安全联系邮箱。我们不会编造 `security@` 域名或个人邮箱作为安全渠道。
 
 ## 处理承诺
 

@@ -16,7 +16,7 @@
 ## 验证
 
 - [ ] `./mvnw clean verify`（backend，Java 21）通过
-- [ ] `git diff --check` 无输出
+- [ ] `git diff --check` 无输出（CI 对 PR 使用 merge-base/base SHA → head SHA）
 - [ ] 未引入 Secret / Mock 冒充真实集成 / TODO / 占位实现
 - [ ] 代码注释为中文，说明关键不变量
 - [ ] 未修改已 Accepted Blueprint / 00_DECISIONS（或已附批准 ADR）

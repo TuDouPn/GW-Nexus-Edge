@@ -1,0 +1,11 @@
+# Secret Scan 范围（不是 Secret 忽略清单）。
+# Git 历史由 `gitleaks detect`（无 --no-git）覆盖；工作树扫描跳过 .git 对象与构建产物，
+# 避免把对象库当明文文件重复扫描。不得在此添加全局 secret allowlist。
+title = "GW Nexus Edge scan scope"
+
+[allowlist]
+description = "排除 .git 对象库与构建产物；不忽略任何确认 Secret"
+paths = [
+  '''(^|/)\.git/''',
+  '''(^|/)target/''',
+]

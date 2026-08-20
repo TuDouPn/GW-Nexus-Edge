@@ -62,7 +62,7 @@ Agent 可以不同，模型可以不同，但输入事实和验收函数必须�
 
 ## 4. Git 是工作状态真相源
 
-私有 GitHub 建立后：
+公开 GitHub 仓库（ADR-0010）建立后：
 
 - `main` 只接受 Pull Request，不允许 Agent 直接推送；
 - 每个 Work Item 使用独立分支，例如 `agent/DEV-0001-agentscope-compatibility`；

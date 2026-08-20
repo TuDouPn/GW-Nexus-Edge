@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "updated": "2026-08-20",
+  "note": "HIGH/CRITICAL 默认阻断。例外必须记录 CVE/组件/版本/原因/有效期。当前无例外。",
+  "exceptions": []
+}

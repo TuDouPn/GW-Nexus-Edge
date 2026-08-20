@@ -100,7 +100,7 @@
 ## 6. 许可与交付
 
 - 仓库公开，源代码采用 Apache License 2.0（ADR-0010）；商标、客户数据、企业模板与商业合同不因代码许可证自动授权。
-- 私有部署交付 Docker 镜像、配置、迁移、部署与运维文档，不默认交付完整源码。
+- 私有部署交付物以 Docker 镜像、配置、迁移与运维文档为主；完整源码通过公开 GitHub 仓库按 Apache-2.0 提供，不因部署合同自动授予商标、客户数据或企业模板。
 - AgentScope Apache-2.0、grok-app MIT 组件及其他依赖必须进入第三方许可清单。
 - assistant-ui MIT 依赖必须进入第三方许可清单、SBOM、漏洞扫描和版本锁定；生产构建禁止使用未锁定的 `latest`。
 - V1.1 Desktop 可参考并复用 grok-app 合规组件，但必须移除 Grok CLI、ACP Runtime、账号、自动化和宿主状态机；不得把其 Runtime 逻辑带入 Nexus Edge。

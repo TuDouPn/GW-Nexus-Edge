@@ -105,3 +105,7 @@ ADR-0001-short-kebab-case-title.md
 | [ADR-0004](ADR-0004-desktop-moved-to-v1-1.md) | Windows Desktop 整体移出 V1 并进入 V1.1 |
 | [ADR-0005](ADR-0005-assistant-ui-for-agent-conversation-surfaces.md) | assistant-ui 作为 Agent 对话交互组件基线，通过项目治理层接入 Nexus REST/SSE |
 | [ADR-0006](ADR-0006-agentscope-2-0-1-bom-and-embedded-harness.md) | **Accepted（2026-08-11）**：采用 AgentScope 2.0.1 官方 BOM 并内嵌 Harness/Core；长期 Runtime Identity；Memory Hooks 边界；Nexus 生成事件 ID；四标识模型（taskId/taskAttemptId/agentId/traceId） |
+| [ADR-0007](ADR-0007-peripheral-dependency-freeze.md) | 外围依赖冻结（MyBatis-Plus / Sa-Token / JDBC / Redis / Flyway；DM8 认证未完成） |
+| [ADR-0008](ADR-0008-redis-persistence-recovery.md) | AgentScope Redis Persistence/Recovery 边界 |
+| [ADR-0009](ADR-0009-agentscope-recovery-capability-boundary.md) | AgentScope Recovery Capability 边界（无独立 Execution Checkpoint API） |
+| [ADR-0010](ADR-0010-open-source-license-and-public-repo.md) | **Accepted**：公开 GitHub 仓库 + Apache License 2.0；inbound=outbound 贡献基线（不等同 CLA/DCO） |
