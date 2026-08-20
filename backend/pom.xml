@@ -46,7 +46,7 @@
           （CVE-2026-59901：netty-codec-compression Bzip2Decoder 无限循环 DoS）。
           不改变 AgentScope 2.0.1 冻结版本。
         -->
-        <netty.version>4.2.16.Final</netty.version>
+        <netty.version>4.2.17.Final</netty.version>
         <!-- AgentScope core/harness/扩展版本由官方 BOM 统一管理 -->
 
         <!--
