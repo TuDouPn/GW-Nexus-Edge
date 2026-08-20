@@ -13,7 +13,7 @@
 交付：
 
 - 本 Blueprint Accepted。
-- 私有 GitHub Monorepo、CI 基线和依赖锁定。
+- 公开 GitHub Monorepo（ADR-0010）、CI 基线和依赖锁定。
 - Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 兼容 PoC。
 - MyBatis-Plus、Sa-Token、Redis/DB Drivers 版本 ADR。
 - assistant-ui 在 React 19/Vite/Tailwind/shadcn 下的 Custom Runtime、Nexus REST/SSE、Tool UI、安全过滤与许可兼容 PoC，并冻结精确版本和公共 API 面。

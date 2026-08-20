@@ -1,0 +1,127 @@
+# Repository Security：Secret Scan / filesystem-dependency 漏洞 / SBOM / License。
+# Required Check context：Repository Security / Scan
+# Fork 安全模型：
+#   pull_request（含 Fork）：真实扫描、不读 Secret、permissions 仅 contents: read、
+#     脱敏 Artifact、不授予 security-events: write、不上传 SARIF、发现问题 Job 失败。
+#   push main：独立 upload-sarif Job 单独授予 security-events: write。
+# 禁止 pull_request_target；禁止用 event 表达式扩大整个 Workflow 权限。
+name: Repository Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Repository Security / Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout with full history（Secret Scan 需 Git 历史）
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.m2/wrapper
+          key: maven-${{ runner.os }}-${{ hashFiles('backend/pom.xml', 'backend/**/pom.xml') }}
+          restore-keys: maven-${{ runner.os }}-
+
+      - name: Install Gitleaks binary and verify pinned SHA256
+        run: bash scripts/ci/install-binary.sh gitleaks /tmp/gw-nexus-ci-tools
+
+      - name: Secret Scan（工作树 + Git 历史；确认 Secret 阻断；输出脱敏）
+        run: bash scripts/ci/secret-scan.sh /tmp/gw-nexus-scan /tmp/gw-nexus-ci-tools/gitleaks
+
+      - name: Upload Gitleaks reports (artifact, redacted)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gitleaks-reports
+          path: /tmp/gw-nexus-scan/gitleaks-*.json
+          if-no-files-found: warn
+
+      - name: Generate CycloneDX SBOM JSON/XML (plugin 2.9.3) and validate components
+        run: bash scripts/ci/generate-sbom.sh
+
+      - name: Upload SBOM (artifact)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cyclonedx-sbom
+          path: |
+            backend/target/aggregate-bom.json
+            backend/target/aggregate-bom.xml
+          if-no-files-found: error
+
+      - name: License compliance check（SBOM + POM 取证；未识别/缺失/多表达式 → 人工复核）
+        run: |
+          python3 scripts/ci/check-licenses.py \
+            --bom backend/target/aggregate-bom.json \
+            --baseline docs/dev-0005/license-baseline.json \
+            --review-out /tmp/gw-nexus-scan/license-review.json \
+            --check
+
+      - name: Install Trivy binary and verify pinned SHA256
+        run: bash scripts/ci/install-binary.sh trivy /tmp/gw-nexus-ci-tools
+
+      - name: SCA dependency/SBOM scan (Trivy) —— HIGH/CRITICAL 阻断
+        # 当前无生产 OCI Image。扫描已解析 CycloneDX，不是 Container Image Scan。
+        # Trivy 数据库无法获取 → 脚本以 TOOL_BLOCKED/INFRASTRUCTURE_FAILURE 失败，不显示为无漏洞。
+        run: bash scripts/ci/vuln-scan.sh /tmp/gw-nexus-scan /tmp/gw-nexus-ci-tools/trivy backend/target/aggregate-bom.json
+
+      - name: Upload Trivy SARIF (artifact；Fork PR 不上传 Code Scanning)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-fs-sarif
+          path: /tmp/gw-nexus-scan/trivy-fs.sarif
+          if-no-files-found: warn
+
+      - name: Upload License review list (artifact)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: license-review
+          path: /tmp/gw-nexus-scan/license-review.json
+          if-no-files-found: warn
+
+      - name: Check worktree has no uncommitted changes after tools
+        run: bash scripts/ci/check-uncommitted.sh
+
+  upload-sarif:
+    name: Upload SARIF (main only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      security-events: write
+    timeout-minutes: 15
+    needs: scan
+    steps:
+      - name: Download Trivy SARIF
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: trivy-fs-sarif
+          path: /tmp/sarif
+      - name: Upload SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: /tmp/sarif/trivy-fs.sarif

@@ -1,6 +1,18 @@
 # GW Nexus Edge
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 > 基于 AgentScope Java 2 构建的企业级 Agent Workspace 平台。
+
+## 许可与边界（ADR-0010）
+
+- 本项目源代码采用 **Apache License 2.0** 开源（见 [LICENSE](LICENSE)）。
+- **当前处于 V1 Enterprise Pilot 开发阶段，不代表生产可用**；未通过生产门禁的能力在文档中标记
+  `Pending` / `Partial` / `Blocked`。
+- **商标、Logo、客户数据、企业模板与第三方组件不因 Apache-2.0 自动授权**；第三方依赖各自许可证见
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+- **安全漏洞请通过私密渠道报告**（[SECURITY.md](SECURITY.md)，Private Vulnerability Reporting），
+  **不要公开创建安全 Issue**。
 
 GW Nexus Edge 面向企业私有化部署，为企业提供安全、可治理、可审计的 AI Agent 工作空间。平台将企业身份、业务资料、知识检索、Agent 执行、可信证据、成果审批与应用交付组织在统一 Workspace 中，使 Agent 不只回答问题，还能在明确的权限和责任边界内完成真实业务任务。
 
@@ -108,7 +120,7 @@ flowchart TB
 | API | `/api/v1` REST、SSE、`Last-Event-ID`、OpenAPI |
 | Observability | OpenTelemetry、Prometheus、Grafana、Loki |
 | Deployment | Ubuntu Server 24.04 LTS、Docker Compose |
-| CI/CD | GitHub Actions |
+| CI/CD | 公开 GitHub 仓库 + GitHub Actions（ADR-0010） |
 
 Windows Desktop 已进入 V1.1，不属于 V1 开发和验收范围。V1 的两条 P0 闭环必须仅通过 Web 完成。Windows Renderer 是独立的服务端 Artifact 基础设施节点，不是 Desktop 客户端。
 
@@ -191,15 +203,17 @@ cd backend
 
 ## 仓库可见性与许可
 
-本仓库可以公开访问，但**公开可见不等于获得开源许可**。在项目正式发布许可证前，除适用法律和代码托管平台条款明确允许的范围外，未授予复制、修改、分发或商业使用 GW Nexus Edge 专有代码的许可。
+本仓库是 **公开 GitHub 仓库**，源代码按 **Apache License 2.0** 授权（[ADR-0010](docs/adr/ADR-0010-open-source-license-and-public-repo.md)，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)）。
 
-第三方开源组件仍分别适用其原始许可证；相关 `LICENSE`、`NOTICE`、SBOM 和第三方许可清单将按照项目供应链治理流程维护。
-
-正式开源许可证或 Source Available 许可模式必须通过 Architecture Decision Record 确认，不能仅通过公开仓库可见性推断。
+- 向本项目提交贡献，即表示贡献者同意其贡献按本项目 Apache License 2.0 授权（见 [CONTRIBUTING.md](CONTRIBUTING.md)）。该 inbound=outbound 基线**不等同于 CLA/DCO**。
+- 商标、Logo、客户数据、企业模板与商业合同不因 Apache-2.0 自动授权。
+- 第三方依赖各自许可证见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 
 ## 安全问题
 
-请不要在公开 Issue、Discussion、日志或截图中披露漏洞细节、企业数据或 Secret。安全报告流程将在 `SECURITY.md` 中正式发布；在该流程建立前，请通过仓库所有者提供的私密渠道报告问题。
+**请不要公开创建安全 Issue**，也不要在 Discussion、日志或截图中披露漏洞细节、企业数据或 Secret。
+
+请通过已启用的 GitHub **Private Vulnerability Reporting** 私密报告：仓库 **Security → Report a vulnerability**。完整说明见 [SECURITY.md](SECURITY.md)。
 
 ---
 

@@ -57,7 +57,7 @@
 | Platform Installation UX | `nexus-edge-ctl` 是平台自身安装、升级、诊断与恢复的长期稳定入口；不得与 Coding Application“一键发布”混用 |
 | Office Renderer | WPS Office 免费版为验证基线；未通过兼容门禁前不承诺生产保真 |
 | Observability | OpenTelemetry + Prometheus + Grafana + Loki |
-| CI | 私有 GitHub 仓库 + GitHub Actions |
+| CI | 公开 GitHub 仓库 + GitHub Actions（ADR-0010） |
 | Coding Runtime | 标准 Node.js Build Contract；Node.js 24 LTS 默认、22 LTS兼容；npm/pnpm/yarn |
 | Coding Sandbox | 独立 Ubuntu 24.04 x86_64 Host Pool；Rootless Docker + gVisor；Sandbox Broker |
 | OCI Build | 独立 Build Worker + Rootless BuildKit；Build Once / Promote Same Artifact |
@@ -99,8 +99,8 @@
 
 ## 6. 许可与交付
 
-- V1 为闭源商业软件，代码托管于私有 GitHub 仓库。
-- 私有部署交付 Docker 镜像、配置、迁移、部署与运维文档，不默认交付完整源码。
+- 仓库公开，源代码采用 Apache License 2.0（ADR-0010）；商标、客户数据、企业模板与商业合同不因代码许可证自动授权。
+- 私有部署交付物以 Docker 镜像、配置、迁移与运维文档为主；完整源码通过公开 GitHub 仓库按 Apache-2.0 提供，不因部署合同自动授予商标、客户数据或企业模板。
 - AgentScope Apache-2.0、grok-app MIT 组件及其他依赖必须进入第三方许可清单。
 - assistant-ui MIT 依赖必须进入第三方许可清单、SBOM、漏洞扫描和版本锁定；生产构建禁止使用未锁定的 `latest`。
 - V1.1 Desktop 可参考并复用 grok-app 合规组件，但必须移除 Grok CLI、ACP Runtime、账号、自动化和宿主状态机；不得把其 Runtime 逻辑带入 Nexus Edge。

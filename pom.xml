@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      GW Nexus Edge 根聚合器。
+
+      目的：GitHub 依赖图（Dependency Graph）只从仓库根检测 Maven 的 pom.xml；
+      后端 reactor 位于 backend/（backend/pom.xml），若根目录无 pom.xml，依赖图将保持为空，
+      导致 DEV-0005 的 dependency-review workflow 返回 "not supported"。
+
+      本文件是纯聚合器（packaging=pom，不声明 parent 与 dependencies），仅把 backend 作为
+      模块聚合，使 GitHub 依赖图与 dependency-review 能解析真实依赖。它不改变 backend 的
+      构建语义、冻结版本或 CI 工作目录（backend-ci 仍以 working-directory: backend 执行）。
+    -->
+    <groupId>com.gwnexusedge</groupId>
+    <artifactId>nexus-edge</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>GW Nexus Edge</name>
+    <description>GW Nexus Edge 根聚合器：仅聚合 backend 模块以启用 GitHub 依赖图与 dependency-review。</description>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <modules>
+        <module>backend</module>
+    </modules>
+</project>

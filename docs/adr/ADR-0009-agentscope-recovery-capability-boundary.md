@@ -64,9 +64,9 @@ AgentScope 2.0.1 依赖闭包（agentscope-core/harness/extensions-model-openai/
 
 ## 影响
 
-- 修正 03 §6 / 08 §9 "AgentScope 保存官方 Execution Checkpoint"未经实证表述（ADR 批准后原子同步）。
+- 修正 03 §6 / 08 §9 "AgentScope 保存官方 Execution Checkpoint"未经实证表述（已在 ADR 批准后原子同步）。
 - G-03：Checkpoint"能力盘点"子项完成后可关闭；真实 Provider 仍 BLOCKED_BY_CREDENTIAL → G-03 保持 PARTIAL。
-- OQ-007：Checkpoint 部分以本 ADR 定级（NOT_VERIFIED/NOT_COMMITTED，待评审）。
+- OQ-007：**已 RESOLVED（关联 ADR-0008/0009）**；Checkpoint 部分定级见 §验证（NOT_VERIFIED/NOT_COMMITTED）。
 
 ## 未解决问题
 
@@ -76,11 +76,14 @@ AgentScope 2.0.1 依赖闭包（agentscope-core/harness/extensions-model-openai/
   session interrupt 保存路径 VERIFIED 但不归因。
 - **shutdownInterrupted 自动续跑：NOT_VERIFIED**（仅字段持久化 VERIFIED）。
 - **Tool 栈 / 任意崩溃点 / Token 级续跑：NOT_VERIFIED（官方未明确"不支持"），OUT_OF_SCOPE（V1 承诺）。**
-- 官方"Execution Checkpoint"表述在 03/08 的落点：待 ADR 批准后原子同步修正。
+- 官方"Execution Checkpoint"表述已在 03 §6 / 08 §9 完成原子同步修正（ADR-0009 批准后执行）。
 
-## 待批准后原子同步
+## 已完成原子同步（ADR-0009 批准后执行）
 
-- 03_SYSTEM_ARCHITECTURE.md §6、08_AGENTSCOPE_AND_SKILL.md §9：修正 Checkpoint 表述。
-- 16_GLOSSARY.md：如需新增术语（沙箱快照 vs 会话状态）。
-- 17_IMPLEMENTATION_READINESS_CHECKLIST.md：G-03 Checkpoint 子项状态（如实）。
-- docs/governance/OPEN_QUESTIONS.md：OQ-007 Checkpoint 部分（如需）。
+- 03_SYSTEM_ARCHITECTURE.md §6、08_AGENTSCOPE_AND_SKILL.md §9：Checkpoint/Recovery 表述已按本 ADR 修正
+  （无独立公开 Execution Checkpoint API；恢复能力组合；Token/Tool 栈/任意崩溃点 NOT_VERIFIED + OUT_OF_SCOPE；
+  Coding 权威恢复 = 新 Sandbox + Base Commit + Commit/Patch/ChangeSet 重放）。
+- 00_DECISIONS.md：新增 A-008（Recovery Capability 边界）。
+- 16_GLOSSARY.md：新增 SandboxSnapshot（沙箱快照）术语。
+- 17_IMPLEMENTATION_READINESS_CHECKLIST.md：G-03 行（Checkpoint 能力盘点完成）。
+- docs/governance/OPEN_QUESTIONS.md：OQ-007 标记 RESOLVED（关联 ADR-0008/0009）。

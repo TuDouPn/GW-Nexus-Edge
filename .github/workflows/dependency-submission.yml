@@ -1,0 +1,35 @@
+# Dependency Submission：仅 push main。Fork PR 不运行、不获写权限。
+# 不得设为 PR Required Check。
+name: Dependency Submission
+
+on:
+  push:
+    branches: [main]
+
+# contents: write 仅为依赖图提交 API 所需（写依赖快照，不修改代码/发布/部署）。
+permissions:
+  contents: write
+
+jobs:
+  submit:
+    name: Submit Maven Dependency Graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Submit Maven dependency snapshot (backend reactor)
+        uses: advanced-security/maven-dependency-submission-action@b275d12641ac2d2108b2cbb7598b154ad2f2cee8 # v5.0.0
+        with:
+          directory: backend

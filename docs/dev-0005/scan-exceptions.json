@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "updated": "2026-08-20",
+  "note": "HIGH/CRITICAL 默认阻断。例外必须记录 CVE、组件、版本、原因、有效期。过期例外恢复阻断。不得把例外写成无漏洞。",
+  "exceptions": [
+    {
+      "cve": "CVE-2026-35568",
+      "component": "io.modelcontextprotocol.sdk:mcp-core",
+      "version": "0.17.0",
+      "severity": "HIGH",
+      "expires": "2026-11-20",
+      "reason": "仅适用于当前未托管 MCP HTTP Server 的 AgentScope client-only 范围。mcp-core 0.17.0 由冻结的 AgentScope Java 2.0.1 传递引入；CVE-2026-35568 是 MCP HTTP Server 缺少 Origin 校验的 DNS rebinding。本仓库当前不托管 MCP HTTP Server / HTTP Transport。到期 2026-11-20。新增 MCP Server 或 HTTP Transport 时本例外立即失效，必须重新扫描并阻断或升级。官方修复为 mcp-core 1.0.0（主版本），未对 AgentScope 2.0.1 做兼容验证，禁止为此升级 AgentScope。"
+    }
+  ]
+}

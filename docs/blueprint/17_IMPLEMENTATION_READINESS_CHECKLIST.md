@@ -22,12 +22,12 @@
 | ID | 检查项 | 通过标准 | 当前状态 |
 |---|---|---|---|
 | G-01 | 核心依赖兼容 PoC | Java 21、Spring Boot 4.1.0、AgentScope 2.0.1 可共同构建和运行 | **PASS**（2026-08-11，DEV-0001：41/41 真实兼容测试，`./mvnw clean verify`） |
-| G-02 | 外围依赖冻结 | MyBatis-Plus、Sa-Token、JDBC、Redis、Flyway 版本有兼容报告和 ADR | **PARTIAL**（2026-08-12，DEV-0002：MySQL/PostgreSQL/Redis/Sa-Token/MyBatis-Plus/Flyway 通过并冻结（ADR-0007 Proposed）；**DM8 兼容认证未完成（无合法服务器环境）→ 不得 PASS**） |
+| G-02 | 外围依赖冻结 | MyBatis-Plus、Sa-Token、JDBC、Redis、Flyway 版本有兼容报告和 ADR | **PARTIAL**（2026-08-12，DEV-0002：MySQL/PostgreSQL/Redis/Sa-Token/MyBatis-Plus/Flyway 通过并冻结（ADR-0007 Proposed）；**DM8 兼容认证未完成（无合法服务器环境）→ 不得 PASS**。2026-08-20 DEV-0005 安全复验：postgresql 42.7.13、netty 4.2.16.Final 受控覆盖，G-02 仍因 DM8 保持 PARTIAL） |
 | G-03 | AgentScope 能力盘点 | Harness/Core、Provider、Persistence、Recovery、Observability 的实际 API 与边界形成适配清单 | PARTIAL（DEV-0001/0003/0004：能力清单已验证大部分；**Redis Persistence/Recovery 已验证（ADR-0008）**；**Checkpoint 能力盘点完成**——SandboxSnapshot payload 往返 VERIFIED、完整 Sandbox 跨调用自动恢复 NOT_VERIFIED、Token/Tool 栈/任意崩溃点续跑 NOT_VERIFIED+OUT_OF_SCOPE（ADR-0009）；**真实 Provider BLOCKED_BY_CREDENTIAL → 不得 PASS**） |
 | G-04 | WPS Renderer 门禁 | 免费版的授权、自动化接口、无人值守、模板保真、稳定性和恢复测试通过 | Blocked：待验证 |
 | G-05 | Skill 验收材料 | 脱敏真实数据、三类正式模板、人工认可 Golden Result 全部到位 | Blocked：待试点企业提供 |
-| G-06 | 私有 GitHub CI | 分支保护和完整 Actions 质量门禁已启用 | Pending |
-| G-07 | 第三方开源组件合规基线 | LICENSE、NOTICE、THIRD-PARTY-NOTICES、SBOM 流程已建立，且与闭源商业分发兼容 | Pending |
+| G-06 | 公开 GitHub CI | 分支保护和完整 Actions 质量门禁已启用 | **PARTIAL**（2026-08-20，DEV-0005：PR #3 **未合并**，不得 PASS。三个 Required Check 已在 PR 上真实通过：`Backend CI / Verify`、`Repository Security / Scan`、`Workflow Security / Lint`。`Dependency Review / Review` 因依赖图 bootstrap 失败，未设为 Required。`Upload SARIF (main only)` 与 Dependency Submission 为 push-main only，尚待合并后验证。main 保护已按 Job Display Name 配置。Fork 模型已在 workflow/Lint 强制。Container Image Scan = NOT_APPLICABLE_YET） |
+| G-07 | 第三方开源组件合规基线 | LICENSE、NOTICE、THIRD-PARTY-NOTICES、SBOM 流程已建立，且与 Apache-2.0 开源分发兼容（ADR-0010） | **PARTIAL**（DEV-0005：LICENSE/NOTICE/SBOM/License 扫描流程建立中；G-07 仅在当前解析依赖完成逐项核验且 `REVIEW_REQUIRED` 为空后才能 PASS。未识别/缺失/多许可证/不明确法律结论不得默认通过） |
 | G-08 | Coding真实材料 | ≥2个脱敏真实Repository、静态+SSR、任务/验收/测试/非生产Secret齐备 | Blocked：待试点企业提供 |
 | G-09 | Sandbox隔离PoC | Rootless Docker+gVisor、Broker、资源隔离、恢复与核心网络阻断通过 | Blocked：待验证 |
 | G-10 | Build供应链PoC | Rootless BuildKit、Harbor、Gitleaks、Semgrep、Trivy、Cosign、Provenance通过 | Blocked：待验证 |

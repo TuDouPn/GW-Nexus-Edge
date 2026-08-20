@@ -123,6 +123,22 @@ Java 21 + Spring Boot 4.1.0 + AgentScope 2.0.1 固定核心下，用真实 Testc
 - 迁移：后续业务模块（Workspace/用户/权限）直接使用本 ADR 冻结版本。
 - 供应链：CycloneDX SBOM 已生成；漏洞扫描 BLOCKED（待 NVD Key/数据源）。
 
+## DEV-0005 安全复验补充（2026-08-20）
+
+本 ADR **仍为 Proposed**，不改写上文 2026-08-12 原始冻结结论（含 PostgreSQL 42.7.11、SB BOM 管理的 Netty 4.2.15.Final）。
+
+DEV-0005 公开仓库 CI 的 Trivy 扫描（CycloneDX SBOM / 依赖扫描，非 Container Image Scan）否决了当时 BOM 解析版本：
+
+- `org.postgresql:postgresql:42.7.11` — CVE-2026-54291（channelBinding 可能被静默降级）。
+- `io.netty:netty-codec-compression:4.2.15.Final` — CVE-2026-59901（Bzip2Decoder 无限循环 DoS；随 Spring Boot 4.1.0 BOM 的 Netty 4.2.15）。
+
+受控覆盖（`backend/pom.xml`），**不改变** AgentScope 2.0.1 / Java 21 / Spring Boot 4.1.0：
+
+- PostgreSQL JDBC **42.7.13**
+- Netty **4.2.16.Final**（`netty.version` + `netty-bom` import）
+
+兼容证据：GitHub Actions Required Check `Backend CI / Verify` 于 2026-08-20 在 PR #3 真实通过（含 PostgreSQL Testcontainers 与现有 AgentScope/外围兼容测试）。**G-02 因 DM8 未验证保持 PARTIAL**，本补充不把 G-02 改为 PASS。
+
 ## 未解决问题
 
 - **DM8 兼容认证**：驱动可解析但无服务器环境 → BLOCKED；取得环境后经 `-P dm8-compat` 补充验证。

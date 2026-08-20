@@ -153,12 +153,12 @@ infrastructure/   MyBatis, Redis, MinIO, LDAP, external adapters
 
 ## 10. OSS 合规
 
-- V1 为闭源商业软件，使用私有 GitHub 仓库。
+- 仓库公开，源代码采用 Apache License 2.0（ADR-0010）；商标、客户数据、企业模板与商业合同不因代码许可证自动授权。
 - 保留 Apache-2.0、MIT 等许可证要求。
 - assistant-ui 的 MIT 许可证、精确锁定版本、来源和修改必须进入第三方声明、SBOM、依赖扫描与升级记录。
 - 复用 grok-app 组件必须记录来源和修改，不复用其 Grok Runtime。
 - CI 生成 SBOM、依赖许可证清单和漏洞报告。
-- 禁止引入许可不明或与闭源分发冲突的依赖。
+- 禁止引入许可不明或来源不明的依赖；第三方许可证须进入 THIRD-PARTY-NOTICES（G-07），不得凭名称猜测。
 
 ## 11. Definition of Done
 

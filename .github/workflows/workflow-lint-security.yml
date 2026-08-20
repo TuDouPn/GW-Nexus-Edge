@@ -1,0 +1,38 @@
+# Workflow Security：actionlint 二进制 + 危险权限/可变引用/pull_request_target/Secret 检查。
+# Required Check context：Workflow Security / Lint
+# actionlint 以固定版本二进制下载并校验仓库钉死的官方 SHA256（禁止 curl|sh）。
+name: Workflow Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Workflow Security / Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint binary and verify pinned SHA256
+        run: bash scripts/ci/install-binary.sh actionlint /tmp/gw-nexus-ci-tools
+
+      - name: actionlint（校验全部 Workflow YAML）
+        run: /tmp/gw-nexus-ci-tools/actionlint -color .github/workflows/*.yml
+
+      - name: 危险权限 / 可变引用 / pull_request_target / Secret / curl|sh 检查
+        run: python3 scripts/ci/workflow-security-check.py
+
+      - name: CI script regression tests (license baseline + Trivy SARIF)
+        run: python3 -m unittest discover -s scripts/ci/tests -v
