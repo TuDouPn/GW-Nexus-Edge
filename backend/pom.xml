@@ -58,7 +58,7 @@
             子模块只声明坐标、不写版本（见 dependencyManagement 注释与 COMPATIBILITY_REPORT.md §3）。
         -->
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
-        <sa-token.version>1.45.0</sa-token.version>
+        <sa-token.version>1.46.0</sa-token.version>
     </properties>
 
     <modules>
