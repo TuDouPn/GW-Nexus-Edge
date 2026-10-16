@@ -82,10 +82,40 @@ def main() -> int:
                 print(f"::error::{f} security-events: write 必须限制在 push main 的独立 Job")
                 fail = True
 
+        for msg in check_maven_dependency_submission(f, text):
+            print(f"::error::{msg}")
+            fail = True
+
     if fail:
         return 1
     print("Workflow 安全检查通过")
     return 0
+
+
+def check_maven_dependency_submission(path: str, text: str) -> list[str]:
+    """防止 directory: backend 时 Action 查找 backend/backend/mvnw。"""
+    errors: list[str] = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        if "backend/backend" in line:
+            errors.append(
+                f"{path} 禁止 backend/backend 路径（Run 32356242289：backend/backend/mvnw）: {stripped}"
+            )
+            break
+    if "maven-dependency-submission-action" not in text:
+        return errors
+    if re.search(r"continue-on-error:\s*true", text):
+        errors.append(f"{path} 禁止 continue-on-error（不得 fail-open）")
+    uses_backend = bool(re.search(r"^[ \t]+directory:[ \t]*backend[ \t]*$", text, re.M))
+    ignores_wrapper = bool(re.search(r"^[ \t]+ignore-maven-wrapper:[ \t]*true[ \t]*$", text, re.M))
+    if uses_backend and not ignores_wrapper:
+        errors.append(
+            f"{path} directory: backend 必须同时设置 ignore-maven-wrapper: true，"
+            "否则 Action 会查找 backend/backend/mvnw"
+        )
+    return errors
 
 
 if __name__ == "__main__":

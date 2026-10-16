@@ -29,7 +29,17 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # ignore-maven-wrapper: true 使用 runner PATH 的 mvn，避免 Action 在
+      # directory: backend 时错误查找 backend/backend/mvnw（Run 32356242289 实证）。
+      # 仍以 backend 为 Maven reactor。不得 continue-on-error / 忽略退出码。
+      - name: Confirm Maven is on PATH
+        run: |
+          set -euo pipefail
+          command -v mvn
+          mvn -version
+
       - name: Submit Maven dependency snapshot (backend reactor)
         uses: advanced-security/maven-dependency-submission-action@b275d12641ac2d2108b2cbb7598b154ad2f2cee8 # v5.0.0
         with:
           directory: backend
+          ignore-maven-wrapper: true
