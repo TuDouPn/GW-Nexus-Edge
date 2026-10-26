@@ -40,7 +40,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- 由 00_DECISIONS.md §3 冻结；已于 2026-08-10 在 Maven Central 核验 -->
-        <agentscope.version>2.0.1</agentscope.version>
+        <agentscope.version>2.0.2</agentscope.version>
         <!--
           DEV-0005：受控覆盖 Spring Boot 4.1.0 BOM 的 Netty 4.2.15.Final → 4.2.16.Final
           （CVE-2026-59901：netty-codec-compression Bzip2Decoder 无限循环 DoS）。
